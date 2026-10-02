@@ -3,6 +3,11 @@
 1. Frontend: React 19 + Vite SPA
    - Assistant UI
    - ShadCN / Tailwind
+   - Playwright for E2E Testing
+   - Vitest for Unit Tests
+   - Tanstack Query
+   - Tanstack Router
+   - Oxlint linter
 2. Backend: TypeScript
    - Oxlint for backend linting.
    - https://effect.website/

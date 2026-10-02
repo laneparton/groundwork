@@ -32,6 +32,7 @@ Rough outline for the first post. Walk through the choices before the build, the
   - The agent is basically a BFF.
   - No need to write server-rendered React in this setting. I still believe most enterprises are on SPA.
 - What assistant-ui handles and what the application still needs to own.
+- The role of Tanstack Router and Tanstack Query
 
 ### API Layer: Effect and Effect HttpApi
 
