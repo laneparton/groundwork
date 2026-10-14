@@ -7,9 +7,9 @@
    - Vitest for Unit Tests
    - Tanstack Query
    - Tanstack Router
-   - Oxlint linter
+   - Oxlint with vendored anti-slop rules; Oxfmt for formatting.
 2. Backend: TypeScript
-   - Oxlint for backend linting.
+   - Oxlint with vendored anti-slop and Effect rules; Oxfmt for formatting.
    - https://effect.website/
    - Effect HttpApi for the HTTP API. Learning Effect is an explicit goal of this project.
    - AI SDK for agent execution: model interaction, tool calling, the agent loop, and response streaming.

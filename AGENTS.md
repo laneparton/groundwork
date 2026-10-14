@@ -1,0 +1,8 @@
+# Repository guidance
+
+- Use the root Oxfmt configuration. Run `npm run format` and `npm run format:check` after editing application code.
+- Run `npm run lint` from the root to check both applications, including the vendored anti-slop rules.
+- Keep Effect handlers focused on the request flow. Put session checks, model configuration, and streaming lifecycle details in their owning modules.
+- Preserve request cancellation when changing streamed responses. Run `npm test --prefix apps/web` to verify auth and streaming behavior.
+- Keep the vendored rules unchanged during application cleanup. Record intentional rule changes and upstream updates in `tools/oxlint/anti-slop/UPSTREAM.md`.
+- Do not format downloaded docs, generated route trees, lockfiles, or vendored rules.

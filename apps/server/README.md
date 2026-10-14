@@ -7,6 +7,7 @@ Node.js backend using Effect v4, Effect HttpApi, AI SDK v7, Better Auth, SQLite,
 Use Node.js 24 or newer and npm. From the repository root:
 
 ```sh
+npm ci
 cd apps/server
 npm ci
 cp .env.example .env
@@ -47,12 +48,16 @@ src/
 ├── config.ts               # Server and model configuration
 ├── layers.ts               # HTTP and Node server composition
 ├── auth/
+│   ├── session.ts         # Require a signed-in session
 │   ├── service.ts         # Better Auth and scoped SQLite connection
 │   └── migrate.ts         # Apply Better Auth schema migrations
-├── chat/stream-response.ts # AI SDK message conversion and streamText
+├── chat/
+│   ├── model.ts           # Model configuration
+│   └── stream-response.ts # AI SDK stream and cancellation lifecycle
 └── http/
     ├── api.ts              # Contracts and schemas
     ├── auth.ts             # Forward auth requests and response cookies
+    ├── errors.ts           # Schema-backed HTTP errors
     ├── health.ts           # Liveness handler
     └── chat.ts             # Validation, configuration, streaming response
 ```
@@ -83,3 +88,5 @@ Run `npm run db:migrate` on first setup and after changing the auth schema. Migr
 Email verification and password reset delivery are not configured in this initial demo. Better Auth handles password hashing and session cookies; chat checks the session on every request.
 
 Conversation persistence, data tools, and evals remain future work. The basic chat sends the current conversation to the model on each request and keeps no server-side state.
+
+Formatting and anti-slop lint rules use the root tooling installation. See [the root README](../../README.md) for `npm run format`, `npm run format:check`, and `npm run lint`.

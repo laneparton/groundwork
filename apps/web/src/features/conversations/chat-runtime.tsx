@@ -6,5 +6,6 @@ const transport = new AssistantChatTransport({ api: '/chat' })
 
 export function ChatRuntimeProvider({ children }: { children: ReactNode }) {
   const runtime = useChatRuntime({ transport })
+
   return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>
 }

@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 100,
+  "tabWidth": 2,
+  "singleQuote": true,
+  "semi": false,
+  "trailingComma": "all",
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/package-lock.json",
+    "**/routeTree.gen.ts",
+    "**/*.md",
+    "temp/**",
+    "tools/oxlint/anti-slop/**"
+  ]
+}

@@ -5,7 +5,12 @@ import { Button } from '@/components/ui/button'
 export function ThreadList() {
   return (
     <ThreadListPrimitive.Root className="flex flex-col gap-2">
-      <ThreadListPrimitive.New asChild><Button variant="outline" className="justify-start"><PlusIcon aria-hidden="true" />New conversation</Button></ThreadListPrimitive.New>
+      <ThreadListPrimitive.New asChild>
+        <Button variant="outline" className="justify-start">
+          <PlusIcon aria-hidden="true" />
+          New conversation
+        </Button>
+      </ThreadListPrimitive.New>
       <ThreadListPrimitive.Items>
         {() => (
           <ThreadListItemPrimitive.Root className="rounded-lg hover:bg-muted data-active:bg-muted">

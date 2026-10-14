@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "ignorePatterns": [
+    "tools/oxlint/anti-slop/**",
+    "temp/**",
+    ".agents/**",
+    ".codex/**",
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/routeTree.gen.ts"
+  ]
+}

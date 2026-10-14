@@ -12,7 +12,13 @@ export const ChatConfig = Config.all({
 
 export const AuthConfig = Config.all({
   secret: Config.Redacted('BETTER_AUTH_SECRET'),
-  baseURL: Config.NonEmptyString('BETTER_AUTH_URL').pipe(Config.withDefault('http://localhost:3000')),
-  databasePath: Config.NonEmptyString('AUTH_DATABASE_PATH').pipe(Config.withDefault('.data/auth.sqlite')),
-  trustedOrigins: Config.String('AUTH_TRUSTED_ORIGINS').pipe(Config.withDefault('http://localhost:5173,http://127.0.0.1:5173')),
+  baseURL: Config.NonEmptyString('BETTER_AUTH_URL').pipe(
+    Config.withDefault('http://localhost:3000'),
+  ),
+  databasePath: Config.NonEmptyString('AUTH_DATABASE_PATH').pipe(
+    Config.withDefault('.data/auth.sqlite'),
+  ),
+  trustedOrigins: Config.String('AUTH_TRUSTED_ORIGINS').pipe(
+    Config.withDefault('http://localhost:5173,http://127.0.0.1:5173'),
+  ),
 })

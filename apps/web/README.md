@@ -7,6 +7,7 @@ React 19 and TypeScript SPA built with Vite, TanStack Router, Tailwind CSS, and 
 Use Node.js 24 or newer and npm. From the repository root:
 
 ```sh
+npm ci
 cd apps/web
 npm ci
 npm run dev
@@ -50,3 +51,5 @@ The assistant-ui documentation snapshot is at `../../temp/docs/assistant-ui`; it
 ## UI ownership
 
 assistant-ui supplies runtime state and headless primitives. This app supplies layout, styles, and UI composition. The optional registry templates are not used by the current chat components. The style-aware registry remains configured in `components.json` for adding components later.
+
+Formatting and anti-slop lint rules use the root tooling installation. See [the root README](../../README.md) for `npm run format`, `npm run format:check`, and `npm run lint`.
