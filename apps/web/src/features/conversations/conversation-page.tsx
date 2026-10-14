@@ -1,10 +1,21 @@
+import { useState, type MouseEvent } from 'react'
+import { useAuiState } from '@assistant-ui/react'
+import { MenuIcon, PanelLeftIcon } from 'lucide-react'
 import { Thread } from '@/components/assistant-ui/thread'
-import { ThreadList } from '@/components/assistant-ui/thread-list'
-import { ChatRuntimeProvider } from './chat-runtime'
-import { useState } from 'react'
+import {
+  ThreadList,
+  ThreadListItems,
+  ThreadListNew,
+  ThreadListRoot,
+  ThreadListSearch,
+} from '@/components/assistant-ui/elements/thread-list.aui'
+import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
 import { Button } from '@/components/ui/button'
-import { authClient } from '@/features/auth/client'
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { AuthGate } from '@/features/auth/auth-gate'
+import { cn } from '@/lib/utils'
+import { ChatRuntimeProvider } from './chat-runtime'
+import { SidebarAccount } from './sidebar-account'
 
 export function ProtectedChat() {
   return (
@@ -15,54 +26,128 @@ export function ProtectedChat() {
 }
 
 export function ConversationPage() {
-  const { data } = authClient.useSession()
-  const [signingOut, setSigningOut] = useState(false)
-  const [error, setError] = useState('')
+  return (
+    <ChatRuntimeProvider>
+      <ConversationLayout />
+    </ChatRuntimeProvider>
+  )
+}
 
-  async function signOut() {
-    setSigningOut(true)
-    setError('')
+function ConversationLayout() {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const hasThreads = useAuiState((s) => s.threads.threadIds.length > 0)
 
-    try {
-      const result = await authClient.signOut()
+  function closeMobileSidebarAfterNavigation(event: MouseEvent<HTMLDivElement>) {
+    if (!(event.target instanceof Element)) return
 
-      if (result.error) setError(result.error.message ?? 'Unable to sign out.')
-    } catch {
-      setError('Unable to sign out. Please try again.')
-    } finally {
-      setSigningOut(false)
+    if (
+      event.target.closest(
+        '[data-slot="aui_thread-list-item-trigger"], [data-slot="aui_thread-list-new"]',
+      )
+    ) {
+      setMobileOpen(false)
     }
   }
 
   return (
-    <ChatRuntimeProvider>
-      <div className="flex h-dvh flex-col bg-background text-foreground">
-        <header className="flex shrink-0 items-center justify-between gap-4 border-b px-5 py-4">
-          <h1 className="text-lg font-semibold tracking-tight">Groundwork</h1>
-          <div className="flex items-center gap-3">
-            <span className="hidden text-sm text-muted-foreground sm:block">{data?.user.name}</span>
-            <Button variant="outline" disabled={signingOut} onClick={signOut}>
-              {signingOut ? 'Signing out…' : 'Sign out'}
-            </Button>
-          </div>
-        </header>
-        {error && (
-          <p role="alert" className="px-5 py-2 text-sm text-destructive">
-            {error}
-          </p>
+    <div className="relative flex h-dvh w-full overflow-hidden bg-background text-foreground">
+      <aside
+        aria-label="Conversations"
+        className={cn(
+          'hidden h-full shrink-0 flex-col overflow-hidden border-r bg-muted/30 transition-[width] duration-200 md:flex',
+          sidebarCollapsed ? 'w-12' : 'w-65',
         )}
-        <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-          <aside
-            aria-label="Conversations"
-            className="max-h-44 shrink-0 overflow-y-auto border-b bg-muted/30 p-3 md:max-h-none md:w-64 md:border-r md:border-b-0"
+      >
+        <div className="flex h-12 shrink-0 items-center overflow-hidden px-2">
+          <h1
+            className={cn(
+              'min-w-0 flex-1 truncate px-2 text-base font-semibold tracking-tight',
+              sidebarCollapsed && 'sr-only',
+            )}
+          >
+            Groundwork
+          </h1>
+          <TooltipIconButton
+            tooltip={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+            side="right"
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            className="size-8"
+          >
+            <PanelLeftIcon className="size-4" />
+          </TooltipIconButton>
+        </div>
+        <ThreadListRoot
+          className={cn(
+            'relative min-h-0 flex-1 transition-[padding,width] duration-200',
+            sidebarCollapsed ? 'w-12 overflow-hidden px-2 pt-1' : 'w-65 overflow-y-auto p-3',
+          )}
+        >
+          <ThreadListNew
+            aria-label="New chat"
+            className={cn(
+              'overflow-hidden transition-all duration-200',
+              sidebarCollapsed
+                ? 'w-8 gap-0 px-2 has-[>svg]:px-2'
+                : 'w-full gap-2 px-2.5 has-[>svg]:px-2.5',
+            )}
+            labelClassName={cn(
+              'overflow-hidden transition-all duration-200',
+              sidebarCollapsed ? 'max-w-0 opacity-0' : 'max-w-24 opacity-100',
+            )}
+          />
+          {hasThreads && (
+            <div
+              aria-hidden={sidebarCollapsed}
+              inert={sidebarCollapsed}
+              className={cn(
+                'transition-opacity duration-150',
+                sidebarCollapsed && 'pointer-events-none opacity-0',
+              )}
+            >
+              <ThreadListSearch value={search} onValueChange={setSearch} />
+            </div>
+          )}
+          <ThreadListItems
+            searchQuery={hasThreads ? search : ''}
+            aria-hidden={sidebarCollapsed}
+            inert={sidebarCollapsed}
+            className={cn(
+              'transition-[opacity,transform] duration-150',
+              sidebarCollapsed ? 'pointer-events-none opacity-0' : 'translate-x-0 opacity-100',
+            )}
+          />
+        </ThreadListRoot>
+        <SidebarAccount collapsed={sidebarCollapsed} />
+      </aside>
+
+      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+        <div className="absolute top-2 left-2 z-20 md:hidden">
+          <SheetTrigger
+            render={<Button variant="ghost" size="icon" className="size-8 bg-background/70" />}
+          >
+            <MenuIcon className="size-4" />
+            <span className="sr-only">Open chat history</span>
+          </SheetTrigger>
+        </div>
+        <SheetContent side="left" className="flex flex-col p-0">
+          <SheetTitle className="flex h-12 shrink-0 items-center px-4 text-sm font-medium">
+            Groundwork
+          </SheetTitle>
+          <div
+            className="relative min-h-0 flex-1 overflow-y-auto p-3"
+            onClick={closeMobileSidebarAfterNavigation}
           >
             <ThreadList />
-          </aside>
-          <main aria-label="Chat" className="min-h-0 min-w-0 flex-1">
-            <Thread />
-          </main>
-        </div>
-      </div>
-    </ChatRuntimeProvider>
+          </div>
+          <SidebarAccount />
+        </SheetContent>
+      </Sheet>
+
+      <main aria-label="Chat" className="min-w-0 flex-1 overflow-hidden">
+        <Thread />
+      </main>
+    </div>
   )
 }
