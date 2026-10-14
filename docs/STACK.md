@@ -13,7 +13,7 @@
    - https://effect.website/
    - Effect HttpApi for the HTTP API. Learning Effect is an explicit goal of this project.
    - AI SDK for agent execution: model interaction, tool calling, the agent loop, and response streaming.
-   - Eval Framework: DeepEval (confirmed): https://github.com/confident-ai/deepeval/tree/main/typescript
+   - Eval Framework: Python DeepEval, managed with uv. Evals sign in through Better Auth and call the same chat endpoint as the web app.
 3. Conversations Database
    - SQLite for the demo, behind a storage interface.
    - Application code depends on the interface rather than SQLite. Alternative stores can be plugged in by implementing the same contract.
@@ -54,9 +54,12 @@ groundwork/
 │   └── api/
 │       └── src/                     # Shared HttpApi definitions and request/response schemas
 ├── evals/
-│   ├── cases/                       # Questions, expected results, and evaluation criteria
-│   ├── fixtures/                    # Fixed tool results for repeatable evaluation
-│   └── agent.eval.ts                # DeepEval suite using the backend agent
+│   ├── harness/                     # Python auth, stream capture, and DeepEval execution
+│   ├── suites/
+│   │   ├── conversation/            # Conversation behavior with colocated cases
+│   │   └── warehouse/               # Themed warehouse suites with colocated cases
+│   ├── tests/harness/               # Offline tests of the eval harness
+│   └── pyproject.toml               # Python dependencies managed with uv
 ├── scripts/                         # Local setup and data preparation
 ├── .env.example
 ├── MISSION.md

@@ -45,3 +45,9 @@ npm test --prefix apps/web
 ```
 
 The integration test uses a temporary SQLite database and a local model-provider fixture. It checks auth, streamed chat, and cancellation without making paid model calls.
+
+## Agent evals
+
+Python [DeepEval evals](evals/README.md) exercise the authenticated chat endpoint
+against the real deps.dev warehouse. Use `uv sync --project evals` to install them
+and `uv run --directory evals --env-file .env deepeval test run suites` to run the baseline suite.
