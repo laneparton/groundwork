@@ -12,10 +12,24 @@ import { AssistantChatTransport } from '@assistant-ui/ai-sdk'
 import { readUIMessageStream } from 'ai'
 
 test(
-  'SQLite auth protects streamed chat and revokes sessions on sign-out',
+  'Auth protects streamed chat, SQL tool round trips, and cancellation',
   { timeout: 30000 },
   async (t) => {
     let providerInput
+    let bigqueryInput
+    let sqlFollowup
+    let heldQuery
+    let resolveSqlStarted
+    let resolveSqlCancelled
+
+    const sqlStarted = new Promise((resolve) => {
+      resolveSqlStarted = resolve
+    })
+
+    const sqlCancelled = new Promise((resolve) => {
+      resolveSqlCancelled = resolve
+    })
+
     let resolveCancelled
 
     const cancelled = new Promise((resolve) => {
@@ -26,6 +40,54 @@ test(
       const chunks = []
 
       for await (const chunk of req) chunks.push(chunk)
+
+      if (req.url.startsWith('/bigquery/')) {
+        res.setHeader('Content-Type', 'application/json')
+
+        if (new URL(req.url, 'http://localhost').pathname.endsWith('/cancel')) {
+          heldQuery?.end(JSON.stringify({ jobComplete: true, totalRows: '0', rows: [] }))
+          res.end(JSON.stringify({ job: { status: { state: 'DONE' } } }))
+          resolveSqlCancelled()
+
+          return
+        }
+
+        if (req.method === 'POST') {
+          const body = JSON.parse(Buffer.concat(chunks).toString())
+          bigqueryInput = body
+          res.end(
+            JSON.stringify({
+              jobReference: body.jobReference,
+              statistics: { query: { statementType: 'SELECT' } },
+              status: { state: 'DONE' },
+            }),
+          )
+        } else {
+          if (bigqueryInput.configuration.query.query.includes("'Hold'")) {
+            heldQuery = res
+            resolveSqlStarted()
+
+            return
+          }
+
+          res.end(
+            JSON.stringify({
+              jobComplete: true,
+              totalRows: '1',
+              schema: {
+                fields: [
+                  { name: 'Name', type: 'STRING' },
+                  { name: 'Version', type: 'STRING' },
+                ],
+              },
+              rows: [{ f: [{ v: 'react' }, { v: '19.2.0' }] }],
+            }),
+          )
+        }
+
+        return
+      }
+
       providerInput = JSON.parse(Buffer.concat(chunks).toString())
       res.writeHead(200, { 'Content-Type': 'text/event-stream' })
 
@@ -59,7 +121,46 @@ test(
         { type: 'response.completed', response: {} },
       ]
 
-      if (providerInput.input[0].content[0].text === 'Hold') {
+      const userText = providerInput.input.find((item) => item.role === 'user')?.content[0].text
+      const toolOutput = providerInput.input.find((item) => item.type === 'function_call_output')
+
+      if ((userText === 'SQL' || userText === 'SQL hold') && !toolOutput) {
+        const item = {
+          type: 'function_call',
+          id: 'sql-item-1',
+          call_id: 'sql-call-1',
+          name: 'query_sql',
+          status: 'completed',
+          arguments: JSON.stringify({
+            sql:
+              userText === 'SQL hold'
+                ? "SELECT 'Hold' AS Name"
+                : 'SELECT Name, Version FROM \u0060bigquery-public-data.deps_dev_v1.PackageVersionsLatest\u0060 WHERE System = "NPM" AND Name = "react" LIMIT 1',
+          }),
+        }
+
+        const toolEvents = [
+          events[0],
+          { type: 'response.output_item.added', output_index: 0, item },
+          {
+            type: 'response.function_call_arguments.delta',
+            item_id: item.id,
+            output_index: 0,
+            delta: item.arguments,
+          },
+          { type: 'response.output_item.done', output_index: 0, item },
+          events.at(-1),
+        ]
+
+        for (const event of toolEvents) res.write('data: ' + JSON.stringify(event) + '\n\n')
+        res.end()
+
+        return
+      }
+
+      if (toolOutput) sqlFollowup = toolOutput
+
+      if (userText === 'Hold') {
         res.on('close', resolveCancelled)
 
         for (const event of events.slice(0, 3)) res.write(`data: ${JSON.stringify(event)}\n\n`)
@@ -94,6 +195,8 @@ test(
         PORT: String(port),
         OPENAI_API_KEY: 'test-key',
         CHAT_MODEL: 'test-model',
+        BIGQUERY_PROJECT_ID: 'test-project',
+        BIGQUERY_EMULATOR_HOST: `http://127.0.0.1:${provider.address().port}/bigquery/v2`,
         OPENAI_BASE_URL: `http://127.0.0.1:${provider.address().port}/v1`,
         AUTH_DATABASE_PATH: join(databaseDirectory, 'auth.sqlite'),
         BETTER_AUTH_SECRET: 'test-only-secret-at-least-thirty-two-characters',
@@ -206,7 +309,40 @@ test(
     assert.ok(outputs.includes('Hello'), 'First text delta reaches the client')
     assert.equal(outputs.at(-1), 'Hello world')
     assert.equal(providerInput.model, 'test-model')
-    assert.equal(providerInput.input[0].content[0].text, 'Hi')
+    assert.equal(providerInput.input.find((item) => item.role === 'user').content[0].text, 'Hi')
+
+    assert.ok(providerInput.tools.some((definition) => definition.name === 'query_sql'))
+
+    const sqlStream = await transport.sendMessages({
+      chatId: 'chat-sql',
+      trigger: 'submit-message',
+      abortSignal: new AbortController().signal,
+      messages: [{ id: 'sql-user', role: 'user', parts: [{ type: 'text', text: 'SQL' }] }],
+    })
+
+    let sqlMessage
+
+    for await (const message of readUIMessageStream({
+      stream: sqlStream,
+      terminateOnError: true,
+    })) {
+      sqlMessage = message
+    }
+
+    const sqlPart = sqlMessage.parts.find((part) => part.type === 'tool-query_sql')
+    assert.equal(sqlPart.state, 'output-available')
+    assert.deepEqual(sqlPart.output, {
+      rows: [{ Name: 'react', Version: '19.2.0' }],
+      truncated: false,
+    })
+    assert.ok(bigqueryInput.configuration.query.query.includes('PackageVersionsLatest'))
+    assert.equal(bigqueryInput.configuration.query.maximumBytesBilled, '20000000000')
+    assert.equal(bigqueryInput.configuration.jobTimeoutMs, '30000')
+    assert.deepEqual(JSON.parse(sqlFollowup.output), sqlPart.output)
+    assert.ok(
+      sqlMessage.parts.some((part) => part.type === 'text' && part.text === 'Hello world'),
+      'The model answers after the SQL tool result',
+    )
 
     const invalid = await fetch(`${api}/chat`, {
       method: 'POST',
@@ -234,6 +370,34 @@ test(
 
     controller.abort()
     await cancelled
+
+    const sqlController = new AbortController()
+
+    const heldSqlStream = await transport.sendMessages({
+      chatId: 'chat-sql-hold',
+      trigger: 'submit-message',
+      abortSignal: sqlController.signal,
+      messages: [
+        { id: 'sql-hold-user', role: 'user', parts: [{ type: 'text', text: 'SQL hold' }] },
+      ],
+    })
+
+    const heldSqlReader = heldSqlStream.getReader()
+
+    const drainHeldSql = (async () => {
+      try {
+        while (!(await heldSqlReader.read()).done) {
+          /* Drain until cancellation. */
+        }
+      } catch {
+        /* Aborting the transport can reject the reader. */
+      }
+    })()
+
+    await sqlStarted
+    sqlController.abort()
+    await sqlCancelled
+    await drainHeldSql
 
     const signout = await fetch(`${api}/api/auth/sign-out`, {
       method: 'POST',

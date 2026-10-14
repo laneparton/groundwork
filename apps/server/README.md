@@ -87,6 +87,43 @@ Run `npm run db:migrate` on first setup and after changing the auth schema. Migr
 
 Email verification and password reset delivery are not configured in this initial demo. Better Auth handles password hashing and session cookies; chat checks the session on every request.
 
-Conversation persistence, data tools, and evals remain future work. The basic chat sends the current conversation to the model on each request and keeps no server-side state.
+Conversation persistence and evals remain future work. The basic chat sends the current conversation to the model on each request and keeps no server-side state.
 
 Formatting and anti-slop lint rules use the root tooling installation. See [the root README](../../README.md) for `npm run format`, `npm run format:check`, and `npm run lint`.
+
+## SQL tool
+
+Chat uses a vanilla AI SDK `streamText` loop with one server-side tool, `query_sql`.
+The model can query the [deps.dev public dataset](https://docs.deps.dev/bigquery/v1/)
+and then use its results in the streamed answer. The existing assistant-ui tool
+renderer shows the SQL input, result, and errors.
+
+Set `BIGQUERY_PROJECT_ID` in `.env` to the Google Cloud project that will run the
+query jobs. Enable the BigQuery API on that project and configure
+[Application Default Credentials](https://cloud.google.com/docs/authentication/provide-credentials-adc):
+
+```sh
+gcloud auth application-default login
+```
+
+The identity needs permission to create BigQuery jobs in that project, such as
+BigQuery Job User. The deps.dev dataset is public. Use read-only dataset access
+if you give this identity access to other datasets.
+
+Example prompt: "What licenses does react 19.2.0 declare on npm?"
+
+The tool accepts a single GoogleSQL SELECT/WITH query. A BigQuery dry run checks
+that it is a SELECT before execution. Results are capped at 100 rows, with a
+`truncated` flag. Each query has a 30-second job timeout and a default maximum
+of 20,000,000,000 bytes billed; change `BIGQUERY_MAX_BYTES_BILLED` in `.env` if
+needed. Pressing Stop or disconnecting the request also cancels its query job.
+
+The initial instructions include a small schema summary and point the model to
+INFORMATION_SCHEMA for discovery. These are starter instructions, not an agent
+harness. Code lives in `src/agent/tools.ts`, `src/agent/instructions.ts`, and
+`src/data/bigquery.ts`.
+
+Without BigQuery configuration, ordinary chat still works and SQL calls report
+an error. The integration test uses a local BigQuery HTTP fixture to verify the
+tool call, result, model follow-up, and query-job cancellation without cloud
+credentials or billed queries.

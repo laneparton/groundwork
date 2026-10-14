@@ -2,6 +2,7 @@ import {
   convertToModelMessages,
   createUIMessageStreamResponse,
   streamText,
+  stepCountIs,
   toUIMessageStream,
   type LanguageModel,
   type UIMessage,
@@ -9,6 +10,8 @@ import {
 import { Effect } from 'effect'
 import { HttpServerResponse } from 'effect/http'
 import { InvalidChatRequest } from '../http/errors.ts'
+import { tools } from '../agent/tools.ts'
+import { instructions } from '../agent/instructions.ts'
 
 export function streamResponse(model: LanguageModel, messages: UIMessage[]) {
   return Effect.gen(function* () {
@@ -38,6 +41,9 @@ export async function createChatResponse(
 ) {
   const result = streamText({
     model,
+    system: instructions,
+    tools,
+    stopWhen: stepCountIs(5),
     messages: await convertToModelMessages(messages),
     abortSignal,
   })
