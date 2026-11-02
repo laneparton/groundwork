@@ -1,10 +1,8 @@
 import { Effect } from 'effect'
 import { HttpApiBuilder } from 'effect/http-api'
 import { requireSession } from '../auth/session.ts'
-import { ConversationNotFound, ConversationStore } from '../conversations/store.ts'
+import { ConversationStore } from '../conversations/store.ts'
 import { Api } from './api.ts'
-
-const notFound = new ConversationNotFound({ message: 'Conversation not found.' })
 
 export const ConversationHandlers = HttpApiBuilder.group(Api, 'conversations', (handlers) =>
   handlers
@@ -13,7 +11,7 @@ export const ConversationHandlers = HttpApiBuilder.group(Api, 'conversations', (
         const session = yield* requireSession(new Headers(request.headers))
         const store = yield* ConversationStore
 
-        return { conversations: store.list(session.user.id) }
+        return { conversations: yield* store.list(session.user.id) }
       }),
     )
     .handle('create', ({ request }) =>
@@ -21,17 +19,15 @@ export const ConversationHandlers = HttpApiBuilder.group(Api, 'conversations', (
         const session = yield* requireSession(new Headers(request.headers))
         const store = yield* ConversationStore
 
-        return { id: store.create(session.user.id) }
+        return { id: yield* store.create(session.user.id) }
       }),
     )
     .handle('get', ({ params, request }) =>
       Effect.gen(function* () {
         const session = yield* requireSession(new Headers(request.headers))
         const store = yield* ConversationStore
-        const conversation = store.get(session.user.id, params.id)
-        const messages = store.messages(session.user.id, params.id)
-
-        if (!conversation || !messages) return yield* Effect.fail(notFound)
+        const conversation = yield* store.get(session.user.id, params.id)
+        const messages = yield* store.messages(session.user.id, params.id)
 
         return { ...conversation, messages }
       }),
@@ -41,7 +37,7 @@ export const ConversationHandlers = HttpApiBuilder.group(Api, 'conversations', (
         const session = yield* requireSession(new Headers(request.headers))
         const store = yield* ConversationStore
 
-        if (!store.update(session.user.id, params.id, payload)) return yield* Effect.fail(notFound)
+        yield* store.update(session.user.id, params.id, payload)
       }),
     )
     .handle('remove', ({ params, request }) =>
@@ -49,7 +45,7 @@ export const ConversationHandlers = HttpApiBuilder.group(Api, 'conversations', (
         const session = yield* requireSession(new Headers(request.headers))
         const store = yield* ConversationStore
 
-        if (!store.remove(session.user.id, params.id)) return yield* Effect.fail(notFound)
+        yield* store.remove(session.user.id, params.id)
       }),
     ),
 )

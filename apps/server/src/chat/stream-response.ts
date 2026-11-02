@@ -17,12 +17,10 @@ export class InvalidChatRequest extends Schema.TaggedError<InvalidChatRequest>()
 
 // Receives the conversation twice: with the user's turn before the model runs, and
 // in full when the response stream ends, including a partial assistant message when
-// the client stops or disconnects.
-export type SaveConversation = (messages: UIMessage[]) => void
-
-export function streamChatResponse(
+// the client stops or disconnects. A failure of the first save fails the request.
+export function streamChatResponse<E>(
   input: ReadonlyArray<unknown>,
-  saveConversation: SaveConversation,
+  saveConversation: (messages: UIMessage[]) => Effect.Effect<void, E>,
 ) {
   return Effect.gen(function* () {
     const agent = yield* Agent
@@ -39,7 +37,11 @@ export function streamChatResponse(
     })
 
     // Save the user's turn before calling the model so it survives a failed response.
-    saveConversation(messages)
+    yield* saveConversation(messages)
+
+    // The final save runs after the request fiber has handed off the stream, so it
+    // runs on this request's context to keep the configured logger.
+    const runFork = Effect.runForkWith(yield* Effect.context<never>())
 
     // The request scope stays open while the response streams. Closing it, when the
     // client disconnects or presses Stop, aborts the model request and any running tool.
@@ -56,11 +58,13 @@ export function streamChatResponse(
         originalMessages: messages,
         generateMessageId: generateId,
         onEnd: ({ messages: conversation }) => {
-          try {
-            saveConversation(conversation)
-          } catch (error) {
-            console.error('Failed to save the conversation.', error)
-          }
+          runFork(
+            saveConversation(conversation).pipe(
+              Effect.catchCause((cause) =>
+                Effect.logError('Failed to save the conversation.', cause),
+              ),
+            ),
+          )
         },
         onError: () =>
           'The model request failed. Check the server model configuration and try again.',

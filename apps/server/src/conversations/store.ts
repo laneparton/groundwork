@@ -33,7 +33,7 @@ export class ConversationNotFound extends Schema.TaggedError<ConversationNotFoun
   { message: Schema.String },
 ) {}
 
-export const ConversationStatus = z.enum(['regular', 'archived'])
+const ConversationStatus = z.enum(['regular', 'archived'])
 
 const conversationRow = z.object({
   id: z.string(),
@@ -64,116 +64,148 @@ function titleFrom(messages: UIMessage[]) {
   return text.length > titleLength ? text.slice(0, titleLength - 1).trimEnd() + '…' : text
 }
 
-function createConversationStore(db: DatabaseSync) {
-  db.exec(schema)
-
-  const insert = db.prepare(
-    'INSERT INTO conversation (id, userId, createdAt, updatedAt) VALUES (?, ?, ?, ?)',
-  )
-
-  const list = db.prepare(
-    'SELECT id, title, status, updatedAt FROM conversation WHERE userId = ? ORDER BY updatedAt DESC',
-  )
-
-  const find = db.prepare(
-    'SELECT id, title, status, updatedAt FROM conversation WHERE id = ? AND userId = ?',
-  )
-
-  const messages = db.prepare(
-    'SELECT message FROM conversation_message WHERE conversationId = ? ORDER BY position',
-  )
-
-  const clearMessages = db.prepare('DELETE FROM conversation_message WHERE conversationId = ?')
-
-  const insertMessage = db.prepare(
-    'INSERT INTO conversation_message (conversationId, position, message) VALUES (?, ?, ?)',
-  )
-
-  const touch = db.prepare(
-    'UPDATE conversation SET updatedAt = ?, title = COALESCE(title, ?) WHERE id = ? AND userId = ?',
-  )
-
-  const update = db.prepare(
-    'UPDATE conversation SET title = COALESCE(?, title), status = COALESCE(?, status) WHERE id = ? AND userId = ?',
-  )
-
-  const remove = db.prepare('DELETE FROM conversation WHERE id = ? AND userId = ?')
-
-  function get(userId: string, id: string) {
-    const row = find.get(id, userId)
-
-    return row ? conversationRow.parse(row) : undefined
-  }
-
-  return {
-    create(userId: string) {
-      const id = randomUUID()
-      const now = new Date().toISOString()
-      insert.run(id, userId, now, now)
-
-      return id
-    },
-
-    list(userId: string) {
-      return list.all(userId).map((row) => conversationRow.parse(row))
-    },
-
-    get,
-
-    messages(userId: string, id: string): UIMessage[] | undefined {
-      if (!get(userId, id)) return undefined
-
-      return messages.all(id).map((row) => {
-        const stored = messageRow.parse(row).message
-
-        // SAFETY: saveMessages only writes messages that passed validateUIMessages
-        // or came from the AI SDK response stream, so each row decodes to a UIMessage.
-        return JSON.parse(stored) as UIMessage
-      })
-    },
-
-    /** Replaces the stored messages. Returns false when the user does not own the conversation. */
-    saveMessages(userId: string, id: string, conversation: UIMessage[]) {
-      if (!get(userId, id)) return false
-
-      db.exec('BEGIN IMMEDIATE')
-
-      try {
-        clearMessages.run(id)
-
-        for (const [position, message] of conversation.entries()) {
-          insertMessage.run(id, position, JSON.stringify(message))
-        }
-
-        touch.run(new Date().toISOString(), titleFrom(conversation), id, userId)
-        db.exec('COMMIT')
-      } catch (error) {
-        db.exec('ROLLBACK')
-        throw error
-      }
-
-      return true
-    },
-
-    update(userId: string, id: string, changes: ConversationChanges) {
-      return update.run(changes.title ?? null, changes.status ?? null, id, userId).changes > 0
-    },
-
-    remove(userId: string, id: string) {
-      return remove.run(id, userId).changes > 0
-    },
-  }
-}
+const notFound = new ConversationNotFound({ message: 'Conversation not found.' })
 
 export class ConversationStore extends Context.Service<
   ConversationStore,
-  ReturnType<typeof createConversationStore>
+  {
+    readonly create: (userId: string) => Effect.Effect<string>
+    /** Lists the user's conversations, most recently updated first. */
+    readonly list: (userId: string) => Effect.Effect<ConversationSummary[]>
+    readonly get: (
+      userId: string,
+      id: string,
+    ) => Effect.Effect<ConversationSummary, ConversationNotFound>
+    readonly messages: (
+      userId: string,
+      id: string,
+    ) => Effect.Effect<UIMessage[], ConversationNotFound>
+    /** Replaces the stored messages and titles the conversation from its first user turn. */
+    readonly saveMessages: (
+      userId: string,
+      id: string,
+      messages: UIMessage[],
+    ) => Effect.Effect<void, ConversationNotFound>
+    readonly update: (
+      userId: string,
+      id: string,
+      changes: ConversationChanges,
+    ) => Effect.Effect<void, ConversationNotFound>
+    readonly remove: (userId: string, id: string) => Effect.Effect<void, ConversationNotFound>
+  }
 >()('groundwork/ConversationStore') {}
+
+// Every lookup is scoped to the user, so another user's conversation reads as not found.
+function prepareStatements(db: DatabaseSync) {
+  db.exec(schema)
+
+  return {
+    insert: db.prepare(
+      'INSERT INTO conversation (id, userId, createdAt, updatedAt) VALUES (?, ?, ?, ?)',
+    ),
+    list: db.prepare(
+      'SELECT id, title, status, updatedAt FROM conversation WHERE userId = ? ORDER BY updatedAt DESC',
+    ),
+    find: db.prepare(
+      'SELECT id, title, status, updatedAt FROM conversation WHERE id = ? AND userId = ?',
+    ),
+    messages: db.prepare(
+      'SELECT message FROM conversation_message WHERE conversationId = ? ORDER BY position',
+    ),
+    clearMessages: db.prepare('DELETE FROM conversation_message WHERE conversationId = ?'),
+    insertMessage: db.prepare(
+      'INSERT INTO conversation_message (conversationId, position, message) VALUES (?, ?, ?)',
+    ),
+    touch: db.prepare(
+      'UPDATE conversation SET updatedAt = ?, title = COALESCE(title, ?) WHERE id = ? AND userId = ?',
+    ),
+    update: db.prepare(
+      'UPDATE conversation SET title = COALESCE(?, title), status = COALESCE(?, status) WHERE id = ? AND userId = ?',
+    ),
+    remove: db.prepare('DELETE FROM conversation WHERE id = ? AND userId = ?'),
+  }
+}
 
 export const ConversationStoreLive = Layer.effect(ConversationStore)(
   Effect.gen(function* () {
     const db = yield* Database
+    const statements = yield* Effect.sync(() => prepareStatements(db))
 
-    return createConversationStore(db)
+    const get = (userId: string, id: string) =>
+      Effect.flatMap(
+        Effect.sync(() => statements.find.get(id, userId)),
+        (row) => (row ? Effect.succeed(conversationRow.parse(row)) : Effect.fail(notFound)),
+      )
+
+    const requireChange = (changes: number | bigint) =>
+      changes > 0 ? Effect.void : Effect.fail(notFound)
+
+    return {
+      create: (userId) =>
+        Effect.sync(() => {
+          const id = randomUUID()
+          const now = new Date().toISOString()
+          statements.insert.run(id, userId, now, now)
+
+          return id
+        }),
+
+      list: (userId) =>
+        Effect.sync(() => statements.list.all(userId).map((row) => conversationRow.parse(row))),
+
+      get,
+
+      messages: (userId, id) =>
+        Effect.andThen(
+          get(userId, id),
+          Effect.sync(() =>
+            statements.messages.all(id).map((row) => {
+              const stored = messageRow.parse(row).message
+
+              // SAFETY: saveMessages only writes messages that passed validateUIMessages
+              // or came from the AI SDK response stream, so each row decodes to a UIMessage.
+              return JSON.parse(stored) as UIMessage
+            }),
+          ),
+        ),
+
+      saveMessages: (userId, id, messages) =>
+        Effect.andThen(
+          get(userId, id),
+          Effect.sync(() => {
+            db.exec('BEGIN IMMEDIATE')
+
+            try {
+              statements.clearMessages.run(id)
+
+              for (const [position, message] of messages.entries()) {
+                statements.insertMessage.run(id, position, JSON.stringify(message))
+              }
+
+              statements.touch.run(new Date().toISOString(), titleFrom(messages), id, userId)
+              db.exec('COMMIT')
+            } catch (error) {
+              db.exec('ROLLBACK')
+              throw error
+            }
+          }),
+        ),
+
+      update: (userId, id, changes) =>
+        Effect.flatMap(
+          Effect.sync(
+            () =>
+              statements.update.run(changes.title ?? null, changes.status ?? null, id, userId)
+                .changes,
+          ),
+          requireChange,
+        ),
+
+      remove: (userId, id) =>
+        Effect.flatMap(
+          Effect.sync(() => statements.remove.run(id, userId).changes),
+          requireChange,
+        ),
+    }
   }),
 )
