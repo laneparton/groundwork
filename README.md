@@ -12,7 +12,7 @@ npm ci --prefix apps/server
 npm ci --prefix apps/web
 ```
 
-Configure `apps/server/.env` and run the auth migration as described in [the server README](apps/server/README.md). Start both apps with `./scripts/dev`; [the launcher instructions](scripts/README.md) cover Overmind setup.
+Configure `apps/server/.env` and run the auth migration as described in [the server README](apps/server/README.md). Start both apps with `./scripts/dev` ([launcher notes](scripts/README.md)).
 
 ## Formatting and linting
 
@@ -41,7 +41,8 @@ The plugin and Oxlint versions are pinned together. [UPSTREAM.md](tools/oxlint/a
 ```sh
 npm run build --prefix apps/server
 npm run build --prefix apps/web
+npm test --prefix apps/server
 npm test --prefix apps/web
 ```
 
-The integration test uses a temporary SQLite database and a local model-provider fixture. It checks auth, streamed chat, and cancellation without making paid model calls.
+The web test is the cross-app integration test. It uses local fixtures and never calls paid APIs.

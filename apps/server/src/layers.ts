@@ -4,7 +4,9 @@ import { Layer } from 'effect'
 import { HttpRouter } from 'effect/http'
 import { HttpApiBuilder } from 'effect/http-api'
 import { ServerConfig } from './config.ts'
+import { AgentLive } from './agent/agent.ts'
 import { AuthLive } from './auth/service.ts'
+import { WarehouseLive } from './data/warehouse.ts'
 import { AuthRoutes } from './http/auth.ts'
 import { Api } from './http/api.ts'
 import { ChatHandlers } from './http/chat.ts'
@@ -14,8 +16,9 @@ const ApiLive = HttpApiBuilder.layer(Api).pipe(
   Layer.provide(Layer.mergeAll(HealthHandlers, ChatHandlers)),
 )
 
-// Supply concrete application services here as they are implemented.
+const AppServices = Layer.merge(AuthLive, AgentLive.pipe(Layer.provide(WarehouseLive)))
+
 export const ServerLive = HttpRouter.serve(Layer.merge(ApiLive, AuthRoutes)).pipe(
-  Layer.provide(AuthLive),
+  Layer.provide(AppServices),
   Layer.provide(NodeHttpServer.layerConfig(() => createServer(), ServerConfig)),
 )

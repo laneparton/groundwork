@@ -25,7 +25,7 @@ export function ProtectedChat() {
   )
 }
 
-export function ConversationPage() {
+function ConversationPage() {
   return (
     <ChatRuntimeProvider>
       <ConversationLayout />

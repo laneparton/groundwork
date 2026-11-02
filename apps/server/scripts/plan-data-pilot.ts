@@ -1,14 +1,13 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { parseArgs } from 'node:util'
 import { z } from 'zod'
-import { configuredBigQuery } from '../src/data/bigquery.ts'
+import { client } from './bigquery-client.ts'
 
 const { values } = parseArgs({
   options: { snapshot: { type: 'string', default: '2026-10-26T21:00:03.696994Z' } },
 })
 
 const snapshot = z.iso.datetime({ offset: true }).parse(values.snapshot)
-const client = configuredBigQuery()
 const quote = String.fromCharCode(96)
 const source = (name: string) => quote + 'bigquery-public-data.deps_dev_v1.' + name + quote
 const atSnapshot = "SnapshotAt = TIMESTAMP '" + snapshot + "'"

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Navigate } from '@tanstack/react-router'
 import { Button } from '@/components/ui/button'
 import { authClient } from './client'
+import { SessionLoading } from './session-loading'
 
 const inputClass =
   'mt-2 w-full rounded-lg border bg-background px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none'
@@ -34,12 +35,7 @@ export function SignInPage() {
     }
   }
 
-  if (isPending)
-    return (
-      <p role="status" className="p-6 text-sm text-muted-foreground">
-        Loading session…
-      </p>
-    )
+  if (isPending) return <SessionLoading />
 
   if (data) return <Navigate to="/" />
 

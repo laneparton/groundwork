@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { z } from 'zod'
-import { configuredBigQuery } from '../src/data/bigquery.ts'
+import { client } from './bigquery-client.ts'
 
 const plan = z
   .object({
@@ -25,7 +25,6 @@ const plan = z
   })
   .parse(JSON.parse(await readFile(new URL('../.data/pilot-plan.json', import.meta.url), 'utf8')))
 
-const client = configuredBigQuery()
 const project = await client.getProjectId()
 const dataset = client.dataset(plan.destinationDataset)
 const label = plan.snapshot.slice(0, 10).replaceAll('-', '')

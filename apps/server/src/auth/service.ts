@@ -22,10 +22,6 @@ export const AuthLive = Layer.effect(Auth)(
   Effect.gen(function* () {
     const config = yield* AuthConfig
 
-    if (Redacted.value(config.secret).length < 32) {
-      return yield* Effect.die(new Error('BETTER_AUTH_SECRET must contain at least 32 characters.'))
-    }
-
     const database = yield* Effect.acquireRelease(
       Effect.sync(() => {
         mkdirSync(dirname(config.databasePath), { recursive: true })
@@ -41,10 +37,7 @@ export const AuthLive = Layer.effect(Auth)(
       database,
       secret: Redacted.value(config.secret),
       baseURL: config.baseURL,
-      trustedOrigins: config.trustedOrigins
-        .split(',')
-        .map((origin) => origin.trim())
-        .filter(Boolean),
+      trustedOrigins: [...config.trustedOrigins],
     })
   }),
 )
