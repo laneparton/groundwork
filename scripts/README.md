@@ -10,24 +10,7 @@ Open http://localhost:5173. Ctrl+C stops both processes. The launcher resolves t
 
 Overmind reads the root `Procfile`. The server loads `apps/server/.env` and uses port 3000 by default. Vite uses port 5173 and exits if that port is occupied, keeping the auth origin and backend proxy consistent. The launcher disables Overmind's automatic `PORT` assignment.
 
-## First-time setup
-
-Use Node.js 24 or newer. Install the process manager and app dependencies:
-
-```sh
-brew install overmind tmux
-npm ci
-npm ci --prefix apps/server
-npm ci --prefix apps/web
-```
-
-Configure `apps/server/.env` as described in [the server README](../apps/server/README.md), then apply the auth schema:
-
-```sh
-(cd apps/server && npm run db:migrate)
-```
-
-Stop any separately running backend/frontend before starting the combined stack.
+The launcher needs Overmind and tmux (`brew install overmind tmux`) in addition to the setup in [the root README](../README.md). Stop any separately running server or web app first.
 
 ## Process controls
 

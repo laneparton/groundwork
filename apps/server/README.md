@@ -1,142 +1,50 @@
 # Groundwork server
 
-Node.js backend using Effect v4, Effect HttpApi, AI SDK v7, Better Auth, SQLite, TypeScript, and Oxlint.
-
-## Run locally
-
-Use Node.js 24 or newer and npm. From the repository root:
+Effect HttpApi server for sign-in and the streaming chat agent. Install dependencies as described in [the root README](../../README.md), then:
 
 ```sh
-npm ci
-cd apps/server
-npm ci
-cp .env.example .env
+cp .env.example .env   # fill in the values below
+npm run db:migrate     # first run, and after Better Auth schema changes
+npm run dev            # http://127.0.0.1:3000
 ```
 
-Set `OPENAI_API_KEY` and `CHAT_MODEL` in `.env` to your OpenAI API key and model ID. Generate a local auth secret with `openssl rand -hex 32` and put it in `BETTER_AUTH_SECRET`. Then run:
+## Configuration
 
-```sh
-npm run db:migrate
-npm run dev
-```
+Node loads `.env` at startup; restart after changing it. Invalid values stop the server at startup.
 
-The server listens at `http://127.0.0.1:3000`. `HOST` and `PORT` are optional. The key stays on the backend. Node loads `.env`; Effect Config validates the settings. Restart the server after changing `.env`.
+| Variable                    | Default                                       | Notes                                                       |
+| --------------------------- | --------------------------------------------- | ----------------------------------------------------------- |
+| `OPENAI_API_KEY`            |                                               | Chat returns `503` until this and `CHAT_MODEL` are set.     |
+| `CHAT_MODEL`                |                                               | OpenAI model ID.                                            |
+| `BETTER_AUTH_SECRET`        |                                               | Required. At least 32 characters: `openssl rand -hex 32`.   |
+| `BETTER_AUTH_URL`           | `http://localhost:3000`                       |                                                             |
+| `AUTH_TRUSTED_ORIGINS`      | `http://localhost:5173,http://127.0.0.1:5173` | Comma-separated frontend origins.                           |
+| `AUTH_DATABASE_PATH`        | `.data/auth.sqlite`                           |                                                             |
+| `BIGQUERY_PROJECT_ID`       |                                               | Project that runs query jobs. Without it, SQL calls fail.   |
+| `BIGQUERY_DATASET`          | `bigquery-public-data.deps_dev_v1`            | Any other `project.dataset` restricts queries to that copy. |
+| `BIGQUERY_MAX_BYTES_BILLED` | `20000000000`                                 | Per-query cap.                                              |
+| `HOST` / `PORT`             | `127.0.0.1` / `3000`                          |                                                             |
+
+BigQuery uses [Application Default Credentials](https://cloud.google.com/docs/authentication/provide-credentials-adc) (`gcloud auth application-default login`). The identity needs BigQuery Job User on `BIGQUERY_PROJECT_ID`.
 
 ## Endpoints
 
-- `GET /health`: returns `200` with `{"status":"ok"}`.
-- `/api/auth/*`: Better Auth sign-up, sign-in, session, and sign-out endpoints.
-- `POST /chat`: requires a valid session cookie, accepts AI SDK UI messages and streams the assistant response using the AI SDK UI-message SSE protocol.
+- `GET /health`: liveness.
+- `/api/auth/*`: Better Auth email/password sign-up, sign-in, session, and sign-out.
+- `POST /chat`: requires a session. Accepts AI SDK UI messages and streams the agent's response as AI SDK UI-message SSE. Returns `401` without a session, `400` for invalid messages, and `503` when chat is not configured.
 
-```sh
-curl http://127.0.0.1:3000/health
+## The `query_sql` tool
 
-# Use the session cookie from signing in, or use the web UI.
-curl -N http://127.0.0.1:3000/chat \
-  -H 'Cookie: better-auth.session_token=<session cookie>' \
-  -H 'Content-Type: application/json' \
-  -d '{"messages":[{"id":"user-1","role":"user","parts":[{"type":"text","text":"Hello"}]}]}'
-```
+The agent's one tool runs a single GoogleSQL `SELECT` against `BIGQUERY_DATASET`. A dry run rejects other statements before anything is billed. Results are capped at 100 rows with a `truncated` flag, and each job times out after 30 seconds. Query errors return to the model as tool output. Stopping or disconnecting cancels the running job.
 
-Unauthenticated chat requests return `401`. Invalid messages return `400`. Missing chat configuration returns `503`; health still works. Provider failures after streaming starts are sent as stream errors. Client cancellation aborts the provider request through the Effect request scope.
-
-## File map
-
-```text
-src/
-├── main.ts                 # Runtime entry point and shutdown
-├── config.ts               # Server and model configuration
-├── layers.ts               # HTTP and Node server composition
-├── auth/
-│   ├── session.ts         # Require a signed-in session
-│   ├── service.ts         # Better Auth and scoped SQLite connection
-│   └── migrate.ts         # Apply Better Auth schema migrations
-├── chat/
-│   ├── model.ts           # Model configuration
-│   └── stream-response.ts # AI SDK stream and cancellation lifecycle
-└── http/
-    ├── api.ts              # Contracts and schemas
-    ├── auth.ts             # Forward auth requests and response cookies
-    ├── errors.ts           # Schema-backed HTTP errors
-    ├── health.ts           # Liveness handler
-    └── chat.ts             # Validation, configuration, streaming response
-```
-
-HttpApi validates the request envelope; AI SDK validates the individual UI messages. The handler converts the SDK's Web Response into an Effect HTTP response, preserving its body stream and headers.
-
-The local Effect guides are at `../../temp/docs/effect`; provenance is recorded in `../../temp/docs/effect-source.md`.
-
-## Checks
+## Scripts
 
 ```sh
 npm run typecheck
 npm run lint
-npm run build
-npm start
+npm test         # unit tests; the cross-app integration test runs from ../web
+npm run build    # emits dist/
+npm start        # runs dist/
 ```
 
-The build emits JavaScript and source maps into `dist`. Start runs the compiled output. The cross-app streaming integration test runs from `../web` with `npm test`. It uses local provider fixtures, never real credentials or paid model calls.
-
-## Authentication storage
-
-Email/password sign-in uses Better Auth with Node's built-in SQLite driver. Users, password hashes, and sessions are stored at `.data/auth.sqlite` by default. The path can be changed with `AUTH_DATABASE_PATH`. Database files and `.env` are ignored by Git.
-
-Run `npm run db:migrate` on first setup and after changing the auth schema. Migration uses the same configuration as the server. The server does not run schema migrations automatically.
-
-`BETTER_AUTH_URL` defaults to `http://localhost:3000`. `AUTH_TRUSTED_ORIGINS` is a comma-separated list of allowed frontend origins, defaulting to `http://localhost:5173,http://127.0.0.1:5173`. Set both explicitly when hosting the app elsewhere. The development frontend proxies auth requests to the backend and uses same-origin cookies.
-
-Email verification and password reset delivery are not configured in this initial demo. Better Auth handles password hashing and session cookies; chat checks the session on every request.
-
-Conversation persistence remains future work. The basic chat sends the current conversation to the model on each request and keeps no server-side state. Authenticated evals live in [evals](../../evals/README.md).
-
-Formatting and the shared anti-slop plugin utilities use the root tooling installation. Each app installs and runs its own Oxlint binary. See [the root README](../../README.md) for `npm run format`, `npm run format:check`, and `npm run lint`.
-
-## SQL tool
-
-Chat uses a vanilla AI SDK `streamText` loop with one server-side tool, `query_sql`.
-The model can query the [deps.dev public dataset](https://docs.deps.dev/bigquery/v1/)
-and then use its results in the streamed answer. The existing assistant-ui tool
-renderer shows the SQL input, result, and errors.
-
-Set `BIGQUERY_PROJECT_ID` in `.env` to the Google Cloud project that will run the
-query jobs. Enable the BigQuery API on that project and configure
-[Application Default Credentials](https://cloud.google.com/docs/authentication/provide-credentials-adc):
-
-```sh
-gcloud auth application-default login
-```
-
-The identity needs permission to create BigQuery jobs in that project, such as
-BigQuery Job User. The deps.dev dataset is public. Use read-only dataset access
-if you give this identity access to other datasets.
-
-Example prompt: "What licenses does react 19.2.0 declare on npm?"
-
-The tool accepts a single GoogleSQL SELECT/WITH query. A BigQuery dry run checks
-that it is a SELECT before execution. Results are capped at 100 rows, with a
-`truncated` flag. Each query has a 30-second job timeout and a default maximum
-of 20,000,000,000 bytes billed; change `BIGQUERY_MAX_BYTES_BILLED` in `.env` if
-needed. Pressing Stop or disconnecting the request also cancels its query job.
-
-The initial instructions include a small schema summary and point the model to
-INFORMATION_SCHEMA for discovery. These are starter instructions, not an agent
-harness. Code lives in `src/agent/tools.ts`, `src/agent/instructions.ts`, and
-`src/data/bigquery.ts`.
-
-Without BigQuery configuration, ordinary chat still works and SQL calls report
-an error. The integration test uses a local BigQuery HTTP fixture to verify the
-tool call, result, model follow-up, and query-job cancellation without cloud
-credentials or billed queries.
-
-## Bounded warehouse pilot
-
-Set `BIGQUERY_DATASET` to a `project.dataset` to query a bounded copy instead of
-public deps.dev. The local pilot is `ai-test-425016.groundwork_pilot_20261026`;
-its tables have seven-day expiry. See [the pilot notes](../../docs/DATA_PILOT.md)
-for planning, creation, validation, scope, and measured sizes. Remove the setting
-to restore public deps.dev. Restart the server after changing `.env`.
-
-Pilot instructions describe its schema and coverage tables. Queries are checked
-against that dataset before execution, and SQL failures preserve their real
-messages in tool results. Authentication and the streaming cancellation flow
-remain the same.
+`scripts/*-data-pilot.ts` plan, create, and validate a bounded BigQuery copy of deps.dev for `BIGQUERY_DATASET`.
