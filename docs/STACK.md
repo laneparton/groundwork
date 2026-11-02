@@ -20,7 +20,7 @@
 4. Real Data: https://docs.deps.dev/bigquery/v1/
 5. Authentication
    - Sign-in is required. Setup should be easy for developers running the demo.
-   - Better Auth for authentication.
+   - Better Auth for quick, simple authentication setup.
 
 ## Proposed Project Structure
 
