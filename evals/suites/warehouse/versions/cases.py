@@ -1,11 +1,11 @@
 from harness.case import EvalCase
 
-# Verified against deps.dev on 2026-10-14. Review this golden when new releases arrive.
+# Verified against the bounded 2026-10-26 export. New exports need new verification.
 CASES = (
     EvalCase(
         id="lodash-semantic-version-order",
         input=(
-            "What is lodash's highest stable npm release in the latest deps.dev snapshot? "
+            "What is lodash's highest stable npm release in this fixed deps.dev snapshot? "
             "Explain how you determine version order rather than sorting version strings."
         ),
         expected_output=(

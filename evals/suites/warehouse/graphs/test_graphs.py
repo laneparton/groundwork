@@ -1,8 +1,12 @@
+from collections.abc import Callable
+
 import pytest
 
-from .cases import CASES, GraphCandidate
+from harness.case import EvalCase
+
+from .cases import CASES
 
 
-@pytest.mark.parametrize("candidate", CASES, ids=lambda case: case.id)
-def test_dependency_graph(candidate: GraphCandidate) -> None:
-    pytest.skip(candidate.blocked_reason)
+@pytest.mark.parametrize("eval_case", CASES, ids=lambda case: case.id)
+def test_dependency_graph(eval_case: EvalCase, evaluate_case: Callable[[EvalCase], None]) -> None:
+    evaluate_case(eval_case)

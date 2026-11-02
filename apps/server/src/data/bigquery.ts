@@ -1,5 +1,6 @@
 import { BigQuery } from '@google-cloud/bigquery'
 import { z } from 'zod'
+import { configuredDataset, publicDataset } from './source.ts'
 
 const rowsSchema = z.array(z.record(z.string(), z.json()))
 const rowLimit = 100
@@ -32,6 +33,23 @@ export async function querySql(client: BigQuery, sql: string, abortSignal?: Abor
 
   if (preview.metadata.statistics?.query?.statementType !== 'SELECT') {
     throw new Error('Only a single read-only SELECT or WITH query is supported.')
+  }
+
+  const dataset = configuredDataset()
+
+  if (dataset !== publicDataset) {
+    const references = z
+      .array(z.object({ projectId: z.string(), datasetId: z.string() }))
+      .parse([
+        ...(preview.metadata.statistics?.query?.referencedTables ?? []),
+        ...(preview.metadata.statistics?.query?.referencedLogicalViews ?? []),
+      ])
+
+    const outsideScope = references.some(
+      (table) => table.projectId + '.' + table.datasetId !== dataset,
+    )
+
+    if (outsideScope) throw new Error('This pilot can only query tables in ' + dataset + '.')
   }
 
   abortSignal?.throwIfAborted()

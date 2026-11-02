@@ -1,6 +1,6 @@
 from harness.case import EvalCase
 
-# Verified against NPMRequirementsLatest on 2026-10-14.
+# Verified against NPMRequirementsLatest on 2026-10-26.
 CASES = (
     EvalCase(
         id="react-dom-dependencies-versus-peers",

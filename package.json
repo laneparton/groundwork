@@ -3,13 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "format": "oxfmt --write apps package.json .oxfmtrc.json .oxlintrc.json",
-    "format:check": "oxfmt --check apps package.json .oxfmtrc.json .oxlintrc.json",
+    "format": "oxfmt --write apps package.json .oxfmtrc.json",
+    "format:check": "oxfmt --check apps package.json .oxfmtrc.json",
     "lint": "npm run lint --prefix apps/server && npm run lint --prefix apps/web"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.86.0",
-    "oxfmt": "0.73.0",
-    "oxlint": "1.86.0"
+    "oxfmt": "0.73.0"
   }
 }

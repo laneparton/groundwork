@@ -21,7 +21,8 @@ evals/
 │       ├── versions/        # Semantic version ordering
 │       ├── requirements/    # Declared dependencies versus peers and resolved versions
 │       ├── advisories/      # Alias deduplication and conflicting severity evidence
-│       └── graphs/          # Deferred graph cases awaiting bounded snapshot goldens
+│       ├── graphs/          # Active graph, vulnerability, and empty-result cases
+│       └── coverage/        # Metadata presence versus graph coverage
 └── tests/harness/           # Offline harness tests
 ```
 
@@ -86,18 +87,31 @@ These commands call the live agent and warehouse. `pytest --collect-only` lists 
 Each case starts a fresh conversation. There are no automatic agent retries by
 the runner.
 
-Seven verified cases run today: two package lookups, one semantic-version
+The suite now contains eleven active cases: two lookups, one semantic-version
 question, one dependency/peer requirement question, two advisory questions,
-and one greeting. Warehouse goldens were checked against live deps.dev data on
-2026-10-14. Source comments record that verification date; review live-data
-facts when upstream releases or advisory metadata change.
+three dependency-graph questions, one coverage-gap question, and one greeting.
+No graph cases are skipped.
 
-Two graph questions are also collected, but explicitly skipped. Their cases
-include reference SQL and the reason a golden is not available: dependency
-queries estimated 102–185 GB before larger joins, above the 20 GB cap. They need
-an affordable bounded warehouse snapshot and independently verified results
-before they can become scored evals. No expected graph counts are fabricated,
-and skipped cases are not coverage evidence.
+Warehouse goldens were independently verified against the bounded
+`2026-10-26T21:00:03.696994Z` export. The local server is configured with
+`BIGQUERY_DATASET=ai-test-425016.groundwork_pilot_20261026`. Reference queries
+are recorded in `suites/warehouse/reference.sql`. The seven-day pilot expires
+unless retained or rebuilt; see [the pilot notes](../docs/DATA_PILOT.md).
+
+The fixed snapshot differs from the earlier live-data baseline:
+
+- The CVE deduplication case now spans lodash 4.17.19 and 4.17.20: ten alias
+  mentions collapse to five distinct CVEs.
+- The two severity records have scores 7.2 and 8.1 but no overlapping aliases
+  in this export. The expected answer preserves that distinction.
+- Webpack's indirect dependency/advisory join is empty in this export. A
+  positive Express dependency/advisory case tests the same joins with six
+  affected package versions and twelve distinct advisory IDs.
+- React 19.1.0 has metadata but no copied root graph. Its case requires the
+  agent to report a coverage gap instead of inventing an empty dependency list.
+
+A different export or public-data source requires re-verifying expected facts.
+Do not silently reuse these goldens against a different dataset.
 
 DeepEval scores:
 

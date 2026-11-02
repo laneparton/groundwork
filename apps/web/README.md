@@ -52,4 +52,4 @@ The assistant-ui documentation snapshot is at `../../temp/docs/assistant-ui`; it
 
 assistant-ui supplies runtime state and headless primitives. This app supplies layout, styles, and UI composition. The optional registry templates are not used by the current chat components. The style-aware registry remains configured in `components.json` for adding components later.
 
-Formatting and anti-slop lint rules use the root tooling installation. See [the root README](../../README.md) for `npm run format`, `npm run format:check`, and `npm run lint`.
+Formatting and the shared anti-slop plugin utilities use the root tooling installation. Each app installs and runs its own Oxlint binary. See [the root README](../../README.md) for `npm run format`, `npm run format:check`, and `npm run lint`.

@@ -87,9 +87,9 @@ Run `npm run db:migrate` on first setup and after changing the auth schema. Migr
 
 Email verification and password reset delivery are not configured in this initial demo. Better Auth handles password hashing and session cookies; chat checks the session on every request.
 
-Conversation persistence and evals remain future work. The basic chat sends the current conversation to the model on each request and keeps no server-side state.
+Conversation persistence remains future work. The basic chat sends the current conversation to the model on each request and keeps no server-side state. Authenticated evals live in [evals](../../evals/README.md).
 
-Formatting and anti-slop lint rules use the root tooling installation. See [the root README](../../README.md) for `npm run format`, `npm run format:check`, and `npm run lint`.
+Formatting and the shared anti-slop plugin utilities use the root tooling installation. Each app installs and runs its own Oxlint binary. See [the root README](../../README.md) for `npm run format`, `npm run format:check`, and `npm run lint`.
 
 ## SQL tool
 
@@ -127,3 +127,16 @@ Without BigQuery configuration, ordinary chat still works and SQL calls report
 an error. The integration test uses a local BigQuery HTTP fixture to verify the
 tool call, result, model follow-up, and query-job cancellation without cloud
 credentials or billed queries.
+
+## Bounded warehouse pilot
+
+Set `BIGQUERY_DATASET` to a `project.dataset` to query a bounded copy instead of
+public deps.dev. The local pilot is `ai-test-425016.groundwork_pilot_20261026`;
+its tables have seven-day expiry. See [the pilot notes](../../docs/DATA_PILOT.md)
+for planning, creation, validation, scope, and measured sizes. Remove the setting
+to restore public deps.dev. Restart the server after changing `.env`.
+
+Pilot instructions describe its schema and coverage tables. Queries are checked
+against that dataset before execution, and SQL failures preserve their real
+messages in tool results. Authentication and the streaming cancellation flow
+remain the same.

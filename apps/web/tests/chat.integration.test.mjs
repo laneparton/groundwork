@@ -55,6 +55,24 @@ test(
         if (req.method === 'POST') {
           const body = JSON.parse(Buffer.concat(chunks).toString())
           bigqueryInput = body
+
+          if (body.configuration.query.query.includes('INVALID_SQL_SENTINEL')) {
+            res.statusCode = 400
+            res.end(
+              JSON.stringify({
+                error: {
+                  code: 400,
+                  message: 'Unrecognized name: INVALID_SQL_SENTINEL',
+                  errors: [
+                    { reason: 'invalidQuery', message: 'Unrecognized name: INVALID_SQL_SENTINEL' },
+                  ],
+                },
+              }),
+            )
+
+            return
+          }
+
           res.end(
             JSON.stringify({
               jobReference: body.jobReference,
@@ -124,7 +142,10 @@ test(
       const userText = providerInput.input.find((item) => item.role === 'user')?.content[0].text
       const toolOutput = providerInput.input.find((item) => item.type === 'function_call_output')
 
-      if ((userText === 'SQL' || userText === 'SQL hold') && !toolOutput) {
+      if (
+        (userText === 'SQL' || userText === 'SQL hold' || userText === 'SQL error') &&
+        !toolOutput
+      ) {
         const item = {
           type: 'function_call',
           id: 'sql-item-1',
@@ -135,7 +156,9 @@ test(
             sql:
               userText === 'SQL hold'
                 ? "SELECT 'Hold' AS Name"
-                : 'SELECT Name, Version FROM \u0060bigquery-public-data.deps_dev_v1.PackageVersionsLatest\u0060 WHERE System = "NPM" AND Name = "react" LIMIT 1',
+                : userText === 'SQL error'
+                  ? 'SELECT INVALID_SQL_SENTINEL'
+                  : 'SELECT Name, Version FROM \u0060bigquery-public-data.deps_dev_v1.PackageVersionsLatest\u0060 WHERE System = "NPM" AND Name = "react" LIMIT 1',
           }),
         }
 
@@ -196,6 +219,7 @@ test(
         OPENAI_API_KEY: 'test-key',
         CHAT_MODEL: 'test-model',
         BIGQUERY_PROJECT_ID: 'test-project',
+        BIGQUERY_DATASET: 'bigquery-public-data.deps_dev_v1',
         BIGQUERY_EMULATOR_HOST: `http://127.0.0.1:${provider.address().port}/bigquery/v2`,
         OPENAI_BASE_URL: `http://127.0.0.1:${provider.address().port}/v1`,
         AUTH_DATABASE_PATH: join(databaseDirectory, 'auth.sqlite'),
@@ -343,6 +367,29 @@ test(
       sqlMessage.parts.some((part) => part.type === 'text' && part.text === 'Hello world'),
       'The model answers after the SQL tool result',
     )
+
+    const errorStream = await transport.sendMessages({
+      chatId: 'sql-error',
+      trigger: 'submit-message',
+      abortSignal: new AbortController().signal,
+      messages: [
+        { id: 'sql-error-user', role: 'user', parts: [{ type: 'text', text: 'SQL error' }] },
+      ],
+    })
+
+    let errorMessage
+
+    for await (const message of readUIMessageStream({
+      stream: errorStream,
+      terminateOnError: true,
+    })) {
+      errorMessage = message
+    }
+
+    const errorPart = errorMessage.parts.find((part) => part.type === 'tool-query_sql')
+    assert.match(errorPart.output.error, /Unrecognized name: INVALID_SQL_SENTINEL/)
+    assert.doesNotMatch(errorPart.output.error, /model request failed/i)
+    assert.deepEqual(JSON.parse(sqlFollowup.output), errorPart.output)
 
     const invalid = await fetch(`${api}/chat`, {
       method: 'POST',
