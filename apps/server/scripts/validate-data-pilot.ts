@@ -1,6 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { z } from 'zod'
-import { configuredBigQuery, querySql } from '../src/data/bigquery.ts'
+import { defaultMaxBytesBilled, runQuery } from '../src/data/query.ts'
+import { client } from './bigquery-client.ts'
 
 const created = z
   .object({
@@ -11,7 +12,7 @@ const created = z
     JSON.parse(await readFile(new URL('../.data/pilot-created.json', import.meta.url), 'utf8')),
   )
 
-const client = configuredBigQuery()
+const queryOptions = { maxBytesBilled: defaultMaxBytesBilled }
 const quote = String.fromCharCode(96)
 const table = (name: string) => quote + created.dataset + '.' + name + quote
 
@@ -76,7 +77,7 @@ const sql = [
     ' r USING (System,Name,Version) WHERE r.Name IS NULL',
 ].join('\n')
 
-const audit = await querySql(client, sql)
+const audit = await runQuery(client, sql, queryOptions)
 
 const checks = z
   .array(z.object({ issue: z.string(), count: z.coerce.number().int().nonnegative() }))
@@ -84,13 +85,14 @@ const checks = z
 
 const failed = checks.filter((check) => check.count !== 0)
 
-const rootStatus = await querySql(
+const rootStatus = await runQuery(
   client,
   'SELECT r.System,r.Name,r.Version,p.DependenciesProcessed,p.DependencyError FROM ' +
     table('RootVersions') +
     ' r JOIN ' +
     table('PackageVersions') +
     ' p USING(System,Name,Version) ORDER BY r.Name,r.Version',
+  queryOptions,
 )
 
 const roots = z
@@ -117,7 +119,7 @@ for (const name of [
   'RootVersions',
   'SnapshotInfo',
 ]) {
-  const result = await querySql(
+  const result = await runQuery(
     client,
     'SELECT COUNTIF(SnapshotAt != TIMESTAMP ' +
       "'" +
@@ -125,6 +127,7 @@ for (const name of [
       "'" +
       ') AS mismatches FROM ' +
       table(name),
+    queryOptions,
   )
 
   const row = z.object({ mismatches: z.coerce.number().int().nonnegative() }).parse(result.rows[0])

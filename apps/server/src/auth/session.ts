@@ -1,6 +1,9 @@
-import { Effect } from 'effect'
-import { Unauthorized } from '../http/errors.ts'
+import { Effect, Schema } from 'effect'
 import { Auth } from './service.ts'
+
+export class Unauthorized extends Schema.TaggedError<Unauthorized>()('Unauthorized', {
+  message: Schema.String,
+}) {}
 
 export function requireSession(headers: Headers) {
   return Effect.gen(function* () {

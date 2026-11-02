@@ -1,59 +1,51 @@
 import {
   convertToModelMessages,
   createUIMessageStreamResponse,
-  streamText,
-  stepCountIs,
   toUIMessageStream,
-  type LanguageModel,
-  type UIMessage,
+  validateUIMessages,
 } from 'ai'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import { HttpServerResponse } from 'effect/http'
-import { InvalidChatRequest } from '../http/errors.ts'
-import { tools } from '../agent/tools.ts'
-import { sourceInstructions } from '../agent/instructions.ts'
+import { Agent } from '../agent/agent.ts'
 
-export function streamResponse(model: LanguageModel, messages: UIMessage[]) {
+export class InvalidChatRequest extends Schema.TaggedError<InvalidChatRequest>()(
+  'InvalidChatRequest',
+  { message: Schema.String },
+) {}
+
+export function streamChatResponse(input: ReadonlyArray<unknown>) {
   return Effect.gen(function* () {
-    // The request scope stays open while streaming. Abort the model request
-    // when the client disconnects or presses Stop.
+    const agent = yield* Agent
+
+    const messages = yield* Effect.tryPromise({
+      try: () => validateUIMessages({ messages: input }),
+      catch: () => new InvalidChatRequest({ message: 'Invalid chat messages.' }),
+    })
+
+    const modelMessages = yield* Effect.tryPromise({
+      try: () => convertToModelMessages(messages),
+      catch: () =>
+        new InvalidChatRequest({ message: 'Messages could not be converted for the model.' }),
+    })
+
+    // The request scope stays open while the response streams. Closing it, when the
+    // client disconnects or presses Stop, aborts the model request and any running tool.
     const controller = yield* Effect.acquireRelease(
       Effect.sync(() => new AbortController()),
       (controller) => Effect.sync(() => controller.abort()),
     )
 
-    const response = yield* Effect.tryPromise({
-      try: () => createChatResponse(model, messages, controller.signal),
-      catch: () =>
-        new InvalidChatRequest({
-          message: 'Messages could not be converted for the model.',
-        }),
+    const result = yield* agent.stream(modelMessages, controller.signal)
+
+    const response = createUIMessageStreamResponse({
+      stream: toUIMessageStream({
+        stream: result.stream,
+        originalMessages: messages,
+        onError: () =>
+          'The model request failed. Check the server model configuration and try again.',
+      }),
     })
 
     return HttpServerResponse.fromWeb(response)
-  })
-}
-
-export async function createChatResponse(
-  model: LanguageModel,
-  messages: UIMessage[],
-  abortSignal: AbortSignal,
-) {
-  const result = streamText({
-    model,
-    system: sourceInstructions,
-    tools,
-    stopWhen: stepCountIs(25),
-    messages: await convertToModelMessages(messages),
-    abortSignal,
-  })
-
-  return createUIMessageStreamResponse({
-    stream: toUIMessageStream({
-      stream: result.stream,
-      originalMessages: messages,
-      onError: () =>
-        'The model request failed. Check the server model configuration and try again.',
-    }),
   })
 }
