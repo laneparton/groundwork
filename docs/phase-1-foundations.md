@@ -5,10 +5,10 @@ In the first phase - lets settle on a basic chat web application architecture. I
 ### Scope:
 
 - BetterAuth in place - with a basic login screen
-- Basic SQLite conversation storage
-- Basic AI SDK Agent - with a single tool hooked up to illustrate our playground
+- Basic SQLite conversation storage - the server saves each conversation per user, so chats survive a reload
+- Basic AI SDK Agent - with a single `query_sql` tool that runs read-only queries against BigQuery
 - Basic SPA + Assistant UI design - copied from their site as much as possible
-- Initial data warehouse connection / test data
+- Initial data warehouse connection - read-only queries against Google's public deps.dev dataset (`bigquery-public-data.deps_dev_v1`), so there's real data to query without hosting our own
 
 ### Out of Scope:
 
