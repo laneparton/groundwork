@@ -3,12 +3,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "format": "oxfmt --write apps package.json .oxfmtrc.json",
-    "format:check": "oxfmt --check apps package.json .oxfmtrc.json",
-    "lint": "npm run lint --prefix apps/server && npm run lint --prefix apps/web"
+    "format": "oxfmt --write apps package.json .oxfmtrc.json commitlint.config.js lint-staged.config.js",
+    "format:check": "oxfmt --check apps package.json .oxfmtrc.json commitlint.config.js lint-staged.config.js",
+    "lint": "npm run lint --prefix apps/server && npm run lint --prefix apps/web",
+    "prepare": "husky"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
     "@oxlint/plugins": "1.86.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0",
     "oxfmt": "0.73.0"
   }
 }
