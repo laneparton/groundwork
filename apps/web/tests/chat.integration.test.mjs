@@ -247,6 +247,7 @@ test(
     const api = `http://127.0.0.1:${port}`
 
     const chatBody = {
+      id: 'conversation-before-sign-in',
       messages: [{ id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
     }
 
@@ -307,13 +308,35 @@ test(
     const session = await fetch(`${api}/api/auth/get-session`, { headers: { Cookie: cookie } })
     assert.equal((await session.json()).user.email, credentials.email)
 
+    const authed = (path, init = {}) =>
+      fetch(`${api}${path}`, {
+        ...init,
+        headers: { 'Content-Type': 'application/json', Cookie: cookie, ...init.headers },
+      })
+
+    const newConversation = async () => {
+      const created = await authed('/conversations', { method: 'POST' })
+      assert.equal(created.status, 200)
+
+      return (await created.json()).id
+    }
+
+    const storedConversation = async (id) => {
+      const response = await authed(`/conversations/${id}`)
+      assert.equal(response.status, 200)
+
+      return response.json()
+    }
+
     const transport = new AssistantChatTransport({
       api: `${api}/chat`,
       headers: { Cookie: cookie },
     })
 
+    const chatId = await newConversation()
+
     const stream = await transport.sendMessages({
-      chatId: 'chat-1',
+      chatId: chatId,
       trigger: 'submit-message',
       abortSignal: new AbortController().signal,
       messages: [{ id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
@@ -337,8 +360,26 @@ test(
 
     assert.ok(providerInput.tools.some((definition) => definition.name === 'query_sql'))
 
+    const stored = await storedConversation(chatId)
+    assert.equal(stored.title, 'Hi', 'The first user message titles the conversation')
+    assert.deepEqual(
+      stored.messages.map((message) => message.role),
+      ['user', 'assistant'],
+    )
+    assert.equal(stored.messages[0].id, 'user-1')
+    assert.ok(stored.messages[1].id, 'The server assigns the assistant message id')
+    assert.ok(
+      stored.messages[1].parts.some((part) => part.type === 'text' && part.text === 'Hello world'),
+      'The finished response is saved',
+    )
+
+    const listed = await (await authed('/conversations')).json()
+    assert.ok(listed.conversations.some((conversation) => conversation.id === chatId))
+
+    const sqlChatId = await newConversation()
+
     const sqlStream = await transport.sendMessages({
-      chatId: 'chat-sql',
+      chatId: sqlChatId,
       trigger: 'submit-message',
       abortSignal: new AbortController().signal,
       messages: [{ id: 'sql-user', role: 'user', parts: [{ type: 'text', text: 'SQL' }] }],
@@ -368,8 +409,14 @@ test(
       'The model answers after the SQL tool result',
     )
 
+    const storedSql = await storedConversation(sqlChatId)
+    const storedSqlPart = storedSql.messages[1].parts.find((part) => part.type === 'tool-query_sql')
+    assert.deepEqual(storedSqlPart.output, sqlPart.output, 'Tool results are saved')
+
+    const errorChatId = await newConversation()
+
     const errorStream = await transport.sendMessages({
-      chatId: 'sql-error',
+      chatId: errorChatId,
       trigger: 'submit-message',
       abortSignal: new AbortController().signal,
       messages: [
@@ -394,7 +441,10 @@ test(
     const invalid = await fetch(`${api}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Cookie: cookie },
-      body: JSON.stringify({ messages: [{ id: 'bad', role: 'user', parts: 'invalid' }] }),
+      body: JSON.stringify({
+        id: chatId,
+        messages: [{ id: 'bad', role: 'user', parts: 'invalid' }],
+      }),
     })
 
     assert.equal(invalid.status, 400)
@@ -402,8 +452,10 @@ test(
 
     const controller = new AbortController()
 
+    const holdChatId = await newConversation()
+
     const ongoing = await transport.sendMessages({
-      chatId: 'chat-2',
+      chatId: holdChatId,
       trigger: 'submit-message',
       abortSignal: controller.signal,
       messages: [{ id: 'user-2', role: 'user', parts: [{ type: 'text', text: 'Hold' }] }],
@@ -418,10 +470,33 @@ test(
     controller.abort()
     await cancelled
 
+    // The response stream ends after the abort reaches the server, so poll for the save.
+    let storedHold = await storedConversation(holdChatId)
+
+    for (let attempt = 0; attempt < 40 && storedHold.messages.length < 2; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      storedHold = await storedConversation(holdChatId)
+    }
+
+    assert.equal(
+      storedHold.messages[0].id,
+      'user-2',
+      'The user turn is saved before the model runs',
+    )
+    assert.equal(storedHold.messages[1]?.role, 'assistant', 'Stopping saves the partial response')
+    assert.ok(
+      storedHold.messages[1].parts.some(
+        (part) => part.type === 'text' && part.text.startsWith('Hello'),
+      ),
+      'The partial response keeps the streamed text',
+    )
+
     const sqlController = new AbortController()
 
+    const sqlHoldChatId = await newConversation()
+
     const heldSqlStream = await transport.sendMessages({
-      chatId: 'chat-sql-hold',
+      chatId: sqlHoldChatId,
       trigger: 'submit-message',
       abortSignal: sqlController.signal,
       messages: [
@@ -446,6 +521,64 @@ test(
     await sqlCancelled
     await drainHeldSql
 
+    const unknownChat = await authed('/chat', {
+      method: 'POST',
+      body: JSON.stringify({ ...chatBody, id: 'missing-conversation' }),
+    })
+
+    assert.equal(unknownChat.status, 404, 'Chats require an existing conversation')
+
+    const renamed = await authed(`/conversations/${chatId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title: 'Renamed', status: 'archived' }),
+    })
+
+    assert.equal(renamed.status, 204)
+    const updated = await storedConversation(chatId)
+    assert.equal(updated.title, 'Renamed')
+    assert.equal(updated.status, 'archived')
+
+    const otherSignup = await fetch(`${api}/api/auth/sign-up/email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: api },
+      body: JSON.stringify({
+        name: 'Other User',
+        email: 'other@example.com',
+        password: 'other-password-1234',
+      }),
+    })
+
+    assert.equal(otherSignup.status, 200)
+
+    const otherCookie = otherSignup.headers
+      .getSetCookie()
+      .map((value) => value.split(';')[0])
+      .join('; ')
+
+    const otherHeaders = { 'Content-Type': 'application/json', Cookie: otherCookie }
+
+    const othersList = await (await fetch(`${api}/conversations`, { headers: otherHeaders })).json()
+    assert.deepEqual(othersList.conversations, [], 'Users only list their own conversations')
+
+    for (const [method, path, body] of [
+      ['GET', `/conversations/${chatId}`],
+      ['PATCH', `/conversations/${chatId}`, { title: 'Stolen' }],
+      ['DELETE', `/conversations/${chatId}`],
+      ['POST', '/chat', { ...chatBody, id: chatId }],
+    ]) {
+      const response = await fetch(`${api}${path}`, {
+        method,
+        headers: otherHeaders,
+        body: body && JSON.stringify(body),
+      })
+
+      assert.equal(response.status, 404, `${method} ${path} hides other users' conversations`)
+    }
+
+    const deleted = await authed(`/conversations/${chatId}`, { method: 'DELETE' })
+    assert.equal(deleted.status, 204)
+    assert.equal((await authed(`/conversations/${chatId}`)).status, 404)
+
     const signout = await fetch(`${api}/api/auth/sign-out`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Cookie: cookie, Origin: api },
@@ -461,5 +594,6 @@ test(
     })
 
     assert.equal(revoked.status, 401, 'Signed-out sessions cannot call chat')
+    assert.equal((await authed('/conversations')).status, 401)
   },
 )

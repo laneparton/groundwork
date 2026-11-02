@@ -13,6 +13,7 @@ export default defineConfig({
     proxy: {
       '/api/auth': server,
       '/chat': server,
+      '/conversations': server,
       '/health': server,
     },
   },
