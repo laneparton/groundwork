@@ -1,9 +1,8 @@
-import { mkdirSync } from 'node:fs'
-import { dirname } from 'node:path'
-import { DatabaseSync } from 'node:sqlite'
+import type { DatabaseSync } from 'node:sqlite'
 import { betterAuth } from 'better-auth'
 import { Context, Effect, Layer, Redacted } from 'effect'
 import { AuthConfig } from '../config.ts'
+import { Database } from '../db/service.ts'
 
 function createAuth(options: {
   database: DatabaseSync
@@ -22,16 +21,7 @@ export const AuthLive = Layer.effect(Auth)(
   Effect.gen(function* () {
     const config = yield* AuthConfig
 
-    const database = yield* Effect.acquireRelease(
-      Effect.sync(() => {
-        mkdirSync(dirname(config.databasePath), { recursive: true })
-        const db = new DatabaseSync(config.databasePath)
-        db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;')
-
-        return db
-      }),
-      (db) => Effect.sync(() => db.close()),
-    )
+    const database = yield* Database
 
     return createAuth({
       database,

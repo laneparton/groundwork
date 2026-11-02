@@ -25,13 +25,14 @@ export const AuthConfig = Config.all({
   baseURL: Config.NonEmptyString('BETTER_AUTH_URL').pipe(
     Config.withDefault('http://localhost:3000'),
   ),
-  databasePath: Config.NonEmptyString('AUTH_DATABASE_PATH').pipe(
-    Config.withDefault('.data/auth.sqlite'),
-  ),
   trustedOrigins: Config.Array(Schema.String, 'AUTH_TRUSTED_ORIGINS').pipe(
     Config.withDefault(['http://localhost:5173', 'http://127.0.0.1:5173']),
     Config.map((origins) => origins.map((origin) => origin.trim()).filter(Boolean)),
   ),
+})
+
+export const DatabaseConfig = Config.all({
+  path: Config.NonEmptyString('AUTH_DATABASE_PATH').pipe(Config.withDefault('.data/auth.sqlite')),
 })
 
 export const WarehouseConfig = Config.all({

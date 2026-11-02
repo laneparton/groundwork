@@ -47,7 +47,7 @@
       }
     },
     {
-      "files": ["src/agent/**", "src/auth/**", "src/chat/**"],
+      "files": ["src/agent/**", "src/auth/**", "src/chat/**", "src/conversations/**", "src/db/**"],
       "rules": {
         "no-restricted-imports": [
           "error",

@@ -1,11 +1,19 @@
 import type { ReactNode } from 'react'
-import { AssistantRuntimeProvider } from '@assistant-ui/react'
+import { AssistantRuntimeProvider, useRemoteThreadListRuntime } from '@assistant-ui/react'
 import { AssistantChatTransport, useChatRuntime } from '@assistant-ui/ai-sdk'
+import { conversationListAdapter } from './conversation-adapter'
 
 const transport = new AssistantChatTransport({ api: '/chat' })
 
+function useChatThreadRuntime() {
+  return useChatRuntime({ transport })
+}
+
 export function ChatRuntimeProvider({ children }: { children: ReactNode }) {
-  const runtime = useChatRuntime({ transport })
+  const runtime = useRemoteThreadListRuntime({
+    runtimeHook: useChatThreadRuntime,
+    adapter: conversationListAdapter,
+  })
 
   return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>
 }
