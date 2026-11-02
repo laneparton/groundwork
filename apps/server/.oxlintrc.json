@@ -36,6 +36,51 @@
     "anti-slop-effect/no-manual-tag-comparison": "error",
     "anti-slop-effect/no-manual-tagged-construction": "error",
     "anti-slop-effect/no-service-constructor-imports": "error",
-    "anti-slop-effect/prefer-effect-match": "error"
-  }
+    "anti-slop-effect/prefer-effect-match": "error",
+    "node/no-process-env": "error"
+  },
+  "overrides": [
+    {
+      "files": ["src/config.ts", "scripts/**"],
+      "rules": {
+        "node/no-process-env": "off"
+      }
+    },
+    {
+      "files": ["src/agent/**", "src/auth/**", "src/chat/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../http/*"],
+                "message": "Only http/ depends on HTTP contracts. Keep errors and logic in the owning module."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/data/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../http/*"],
+                "message": "Only http/ depends on HTTP contracts. Keep errors and logic in the owning module."
+              },
+              {
+                "group": ["../agent/*", "../chat/*"],
+                "message": "data/ sits below agent/ and chat/; it cannot depend on them."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }
