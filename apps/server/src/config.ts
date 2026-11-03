@@ -31,8 +31,12 @@ export const AuthConfig = Config.all({
   ),
 })
 
+// AUTH_DATABASE_PATH is the previous name, read so existing .env files keep their data.
 export const DatabaseConfig = Config.all({
-  path: Config.NonEmptyString('AUTH_DATABASE_PATH').pipe(Config.withDefault('.data/auth.sqlite')),
+  path: Config.NonEmptyString('DATABASE_PATH').pipe(
+    Config.orElse(() => Config.NonEmptyString('AUTH_DATABASE_PATH')),
+    Config.withDefault('.data/groundwork.sqlite'),
+  ),
 })
 
 export const WarehouseConfig = Config.all({

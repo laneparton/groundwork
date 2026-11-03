@@ -18,7 +18,7 @@ const StoredMessage = z.looseObject({
 })
 
 // The server only stores messages validated by the AI SDK; this guards the shape.
-const Conversation = ConversationSummary.extend({
+const ConversationMessages = z.object({
   messages: z.array(z.custom<UIMessage>((value) => StoredMessage.safeParse(value).success)),
 })
 
@@ -60,7 +60,13 @@ export async function createConversation() {
 export async function getConversation(id: string) {
   const response = await request(conversationPath(id))
 
-  return Conversation.parse(await response.json())
+  return ConversationSummary.parse(await response.json())
+}
+
+export async function getConversationMessages(id: string) {
+  const response = await request(`${conversationPath(id)}/messages`)
+
+  return ConversationMessages.parse(await response.json()).messages
 }
 
 export async function updateConversation(id: string, changes: ConversationChanges) {

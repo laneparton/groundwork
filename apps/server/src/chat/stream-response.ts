@@ -15,29 +15,45 @@ export class InvalidChatRequest extends Schema.TaggedError<InvalidChatRequest>()
   { message: Schema.String },
 ) {}
 
-// Receives the conversation twice: with the user's turn before the model runs, and
-// in full when the response stream ends, including a partial assistant message when
-// the client stops or disconnects. A failure of the first save fails the request.
+// The one message a client sends with a chat request. Only the server writes
+// assistant messages; AI SDK validates the parts.
+export const SentMessage = Schema.Struct({
+  id: Schema.String,
+  role: Schema.Literal('user'),
+  metadata: Schema.optional(Schema.Unknown),
+  parts: Schema.Unknown,
+})
+
+export function validateUserMessage(sent: typeof SentMessage.Type) {
+  return Effect.gen(function* () {
+    const [message] = yield* Effect.tryPromise({
+      try: () => validateUIMessages({ messages: [sent] }),
+      catch: () => new InvalidChatRequest({ message: 'Invalid chat message.' }),
+    })
+
+    if (!message) {
+      return yield* Effect.fail(new InvalidChatRequest({ message: 'Invalid chat message.' }))
+    }
+
+    return message
+  })
+}
+
+// Streams the response to `messages` and hands the full conversation to
+// `saveConversation` when the stream ends, including a partial assistant message when
+// the client stops or disconnects.
 export function streamChatResponse<E>(
-  input: ReadonlyArray<unknown>,
-  saveConversation: (messages: UIMessage[]) => Effect.Effect<void, E>,
+  messages: UIMessage[],
+  saveConversation: (conversation: UIMessage[]) => Effect.Effect<void, E>,
 ) {
   return Effect.gen(function* () {
     const agent = yield* Agent
-
-    const messages = yield* Effect.tryPromise({
-      try: () => validateUIMessages({ messages: input }),
-      catch: () => new InvalidChatRequest({ message: 'Invalid chat messages.' }),
-    })
 
     const modelMessages = yield* Effect.tryPromise({
       try: () => convertToModelMessages(messages),
       catch: () =>
         new InvalidChatRequest({ message: 'Messages could not be converted for the model.' }),
     })
-
-    // Save the user's turn before calling the model so it survives a failed response.
-    yield* saveConversation(messages)
 
     // The final save runs after the request fiber has handed off the stream, so it
     // runs on this request's context to keep the configured logger.

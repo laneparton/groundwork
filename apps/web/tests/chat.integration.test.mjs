@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import { AssistantChatTransport } from '@assistant-ui/ai-sdk'
 import { readUIMessageStream } from 'ai'
+import { prepareSendMessagesRequest } from '../src/features/conversations/chat-request.ts'
 
 test(
   'Auth protects streamed chat, SQL tool round trips, and cancellation',
@@ -139,7 +140,7 @@ test(
         { type: 'response.completed', response: {} },
       ]
 
-      const userText = providerInput.input.find((item) => item.role === 'user')?.content[0].text
+      const userText = providerInput.input.findLast((item) => item.role === 'user')?.content[0].text
       const toolOutput = providerInput.input.find((item) => item.type === 'function_call_output')
 
       if (
@@ -222,7 +223,7 @@ test(
         BIGQUERY_DATASET: 'bigquery-public-data.deps_dev_v1',
         BIGQUERY_EMULATOR_HOST: `http://127.0.0.1:${provider.address().port}/bigquery/v2`,
         OPENAI_BASE_URL: `http://127.0.0.1:${provider.address().port}/v1`,
-        AUTH_DATABASE_PATH: join(databaseDirectory, 'auth.sqlite'),
+        DATABASE_PATH: join(databaseDirectory, 'groundwork.sqlite'),
         BETTER_AUTH_SECRET: 'test-only-secret-at-least-thirty-two-characters',
         BETTER_AUTH_URL: `http://127.0.0.1:${port}`,
       },
@@ -248,7 +249,8 @@ test(
 
     const chatBody = {
       id: 'conversation-before-sign-in',
-      messages: [{ id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
+      message: { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] },
+      parentId: null,
     }
 
     const anonymous = await fetch(`${api}/chat`, {
@@ -322,15 +324,26 @@ test(
     }
 
     const storedConversation = async (id) => {
-      const response = await authed(`/conversations/${id}`)
-      assert.equal(response.status, 200)
+      const [summary, messages] = await Promise.all([
+        authed(`/conversations/${id}`),
+        authed(`/conversations/${id}/messages`),
+      ])
 
-      return response.json()
+      assert.equal(summary.status, 200)
+      assert.equal(messages.status, 200)
+
+      return { ...(await summary.json()), ...(await messages.json()) }
     }
+
+    const sendChat = (id, message, parentId) =>
+      authed('/chat', { method: 'POST', body: JSON.stringify({ id, message, parentId }) })
+
+    const userMessage = (id, text) => ({ id, role: 'user', parts: [{ type: 'text', text }] })
 
     const transport = new AssistantChatTransport({
       api: `${api}/chat`,
       headers: { Cookie: cookie },
+      prepareSendMessagesRequest,
     })
 
     const chatId = await newConversation()
@@ -443,12 +456,26 @@ test(
       headers: { 'Content-Type': 'application/json', Cookie: cookie },
       body: JSON.stringify({
         id: chatId,
-        messages: [{ id: 'bad', role: 'user', parts: 'invalid' }],
+        message: { id: 'bad', role: 'user', parts: 'invalid' },
+        parentId: null,
       }),
     })
 
     assert.equal(invalid.status, 400)
     assert.equal((await invalid.json())._tag, 'InvalidChatRequest')
+
+    const forged = await sendChat(
+      chatId,
+      { id: 'forged', role: 'assistant', parts: [{ type: 'text', text: 'Forged' }] },
+      'user-1',
+    )
+
+    assert.equal(forged.status, 400, 'Clients cannot write assistant messages')
+
+    const stale = await sendChat(chatId, userMessage('stale', 'Stale'), 'not-a-stored-message')
+    assert.equal(stale.status, 409, 'A parent the server has not stored is a conflict')
+    assert.equal((await stale.json())._tag, 'ConversationConflict')
+    assert.equal((await storedConversation(chatId)).messages.length, 2)
 
     const controller = new AbortController()
 
@@ -462,34 +489,62 @@ test(
     })
 
     const reader = ongoing.getReader()
+    let partialId
 
-    while ((await reader.read()).value?.type !== 'text-delta') {
-      /* Wait for the first token. */
+    for (let chunk = await reader.read(); chunk.value?.type !== 'text-delta';) {
+      if (chunk.value?.type === 'start') partialId = chunk.value.messageId
+      chunk = await reader.read()
     }
 
+    assert.ok(partialId, 'The server announces the assistant message id')
     controller.abort()
+
+    // Send the next turn straight after Stop. Its parent is the partial reply, which the
+    // server must have saved first; the store tests cover the ordering deterministically.
+    const followUp = await sendChat(holdChatId, userMessage('user-3', 'Again'), partialId)
+    assert.equal(followUp.status, 200, await followUp.clone().text())
+    await followUp.text()
     await cancelled
 
-    // The response stream ends after the abort reaches the server, so poll for the save.
-    let storedHold = await storedConversation(holdChatId)
+    const storedHold = await storedConversation(holdChatId)
 
-    for (let attempt = 0; attempt < 40 && storedHold.messages.length < 2; attempt++) {
-      await new Promise((resolve) => setTimeout(resolve, 50))
-      storedHold = await storedConversation(holdChatId)
-    }
-
-    assert.equal(
-      storedHold.messages[0].id,
-      'user-2',
-      'The user turn is saved before the model runs',
+    assert.deepEqual(
+      storedHold.messages.map((message) => message.id).slice(0, 3),
+      ['user-2', partialId, 'user-3'],
+      'The follow-up is stored after the partial reply',
     )
-    assert.equal(storedHold.messages[1]?.role, 'assistant', 'Stopping saves the partial response')
     assert.ok(
       storedHold.messages[1].parts.some(
         (part) => part.type === 'text' && part.text.startsWith('Hello'),
       ),
-      'The partial response keeps the streamed text',
+      'Stopping saves the partial response',
     )
+    assert.equal(storedHold.messages.length, 4, 'The follow-up response is saved')
+    assert.equal(
+      providerInput.input.filter((item) => item.role === 'user').at(-1).content[0].text,
+      'Again',
+      'The server sends its stored history to the model',
+    )
+
+    const regenerated = await sendChat(holdChatId, userMessage('user-3', 'Again'), partialId)
+    assert.equal(regenerated.status, 200)
+    await regenerated.text()
+
+    const afterRegenerate = await storedConversation(holdChatId)
+    assert.equal(afterRegenerate.messages.length, 4, 'Regenerating replaces the last response')
+    assert.notEqual(afterRegenerate.messages[3].id, storedHold.messages[3].id)
+
+    const edited = await sendChat(holdChatId, userMessage('user-2-edit', 'Edited'), null)
+    assert.equal(edited.status, 200)
+    await edited.text()
+
+    const afterEdit = await storedConversation(holdChatId)
+    assert.deepEqual(
+      afterEdit.messages.map((message) => message.role),
+      ['user', 'assistant'],
+      'Editing the first message drops everything after it',
+    )
+    assert.equal(afterEdit.messages[0].id, 'user-2-edit')
 
     const sqlController = new AbortController()
 

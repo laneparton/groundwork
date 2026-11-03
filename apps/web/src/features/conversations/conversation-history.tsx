@@ -6,7 +6,7 @@ import {
   type ThreadHistoryAdapter,
 } from '@assistant-ui/react'
 import type { UIMessage } from 'ai'
-import { getConversation } from './api'
+import { getConversationMessages } from './api'
 
 // The server saves every chat request and the finished response, so the client
 // only reads history. Writes from the runtime are intentionally no-ops.
@@ -29,7 +29,7 @@ function useServerHistory() {
 
           if (!remoteId) return { messages: [] }
 
-          const { messages } = await getConversation(remoteId)
+          const messages = await getConversationMessages(remoteId)
 
           return {
             messages: messages.map(({ id, ...content }, index) =>

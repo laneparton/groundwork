@@ -26,10 +26,16 @@ export const ConversationHandlers = HttpApiBuilder.group(Api, 'conversations', (
       Effect.gen(function* () {
         const session = yield* requireSession(new Headers(request.headers))
         const store = yield* ConversationStore
-        const conversation = yield* store.get(session.user.id, params.id)
-        const messages = yield* store.messages(session.user.id, params.id)
 
-        return { ...conversation, messages }
+        return yield* store.get(session.user.id, params.id)
+      }),
+    )
+    .handle('messages', ({ params, request }) =>
+      Effect.gen(function* () {
+        const session = yield* requireSession(new Headers(request.headers))
+        const store = yield* ConversationStore
+
+        return { messages: yield* store.messages(session.user.id, params.id) }
       }),
     )
     .handle('update', ({ params, payload, request }) =>
