@@ -10,7 +10,14 @@ function createAuth(options: {
   baseURL: string
   trustedOrigins: string[]
 }) {
-  return betterAuth({ ...options, appName: 'Groundwork', emailAndPassword: { enabled: true } })
+  return betterAuth({
+    ...options,
+    appName: 'Groundwork',
+    emailAndPassword: { enabled: true },
+    // Better Auth skips the CSRF origin check when NODE_ENV is test; keep it on so tests
+    // exercise the same protection production runs.
+    advanced: { disableOriginCheck: false },
+  })
 }
 
 export class Auth extends Context.Service<Auth, ReturnType<typeof createAuth>>()(

@@ -24,6 +24,9 @@ import { HealthHandlers } from './health.ts'
 
 const origin = 'http://localhost:5173'
 
+// An extra origin, like the dev server reached by IP instead of name.
+const trustedOrigin = 'http://127.0.0.1:5173'
+
 const usage = {
   inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined },
   outputTokens: { total: 1, text: 1, reasoning: undefined },
@@ -108,6 +111,7 @@ async function startServer(options: { chat: boolean } = { chat: true }): Promise
     DATABASE_PATH: path,
     BETTER_AUTH_SECRET: 'x'.repeat(32),
     BETTER_AUTH_URL: origin,
+    AUTH_TRUSTED_ORIGINS: trustedOrigin,
   })
 
   // One connection shared by auth and the store, as in production.
@@ -200,6 +204,26 @@ describe('HTTP API', () => {
     const response = await server.request('/health')
 
     expect(await json(response)).toEqual({ status: 'ok' })
+  })
+
+  it.each([
+    { from: trustedOrigin, status: 200 },
+    { from: 'http://evil.test', status: 403 },
+  ])('accepts sign-ups only from trusted origins: $from', async ({ from, status }) => {
+    const server = await startServer()
+
+    const response = await server.request('/api/auth/sign-up/email', {
+      method: 'POST',
+      // Better Auth checks the origin of requests that carry cookies, which CSRF needs.
+      headers: { origin: from, cookie: 'theme=dark' },
+      body: JSON.stringify({
+        name: 'Test',
+        email: 'origin@example.test',
+        password: 'password-123',
+      }),
+    })
+
+    expect(response.status).toBe(status)
   })
 
   it('rejects requests without a session', async () => {
