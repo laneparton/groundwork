@@ -325,13 +325,13 @@ export function makeConversationStore(
             yield* get(userId, id)
 
             if (parentId !== null && parentOf(id, parentId) === undefined) {
-              return yield* Effect.fail(conflict)
+              return yield* conflict
             }
 
             const storedParent = parentOf(id, message.id)
 
             if (storedParent !== undefined && storedParent !== parentId) {
-              return yield* Effect.fail(conflict)
+              return yield* conflict
             }
 
             // Save the user's turn before the model runs so it survives a failed response.

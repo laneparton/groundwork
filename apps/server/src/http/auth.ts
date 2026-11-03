@@ -7,10 +7,7 @@ export const AuthRoutes = HttpRouter.add('*', '/api/auth/*', (request) =>
     const auth = yield* Auth
     const webRequest = yield* HttpServerRequest.toWeb(request)
 
-    const response = yield* Effect.tryPromise({
-      try: () => auth.handler(webRequest),
-      catch: () => new Error('Authentication request failed.'),
-    })
+    const response = yield* Effect.promise(() => auth.handler(webRequest))
 
     return HttpServerResponse.fromWeb(response)
   }).pipe(Effect.orDie),

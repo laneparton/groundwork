@@ -32,7 +32,7 @@ export function validateUserMessage(sent: typeof SentMessage.Type) {
     })
 
     if (!message) {
-      return yield* Effect.fail(new InvalidChatRequest({ message: 'Invalid chat message.' }))
+      return yield* new InvalidChatRequest({ message: 'Invalid chat message.' })
     }
 
     return message
