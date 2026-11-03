@@ -18,8 +18,15 @@ const StoredMessage = z.looseObject({
 })
 
 // The server only stores messages validated by the AI SDK; this guards the shape.
-const Conversation = ConversationSummary.extend({
-  messages: z.array(z.custom<UIMessage>((value) => StoredMessage.safeParse(value).success)),
+// Stored messages form a tree; headId is the leaf of the branch written last.
+const ConversationTree = z.object({
+  headId: z.string().nullable(),
+  messages: z.array(
+    z.object({
+      message: z.custom<UIMessage>((value) => StoredMessage.safeParse(value).success),
+      parentId: z.string().nullable(),
+    }),
+  ),
 })
 
 export type ConversationSummary = z.infer<typeof ConversationSummary>
@@ -60,7 +67,13 @@ export async function createConversation() {
 export async function getConversation(id: string) {
   const response = await request(conversationPath(id))
 
-  return Conversation.parse(await response.json())
+  return ConversationSummary.parse(await response.json())
+}
+
+export async function getConversationMessages(id: string) {
+  const response = await request(`${conversationPath(id)}/messages`)
+
+  return ConversationTree.parse(await response.json())
 }
 
 export async function updateConversation(id: string, changes: ConversationChanges) {

@@ -12,7 +12,7 @@ In development, Vite proxies `/api/auth`, `/chat`, `/conversations`, and `/healt
 
 - `src/routes/`: file-based routes. The router plugin generates `src/routeTree.gen.ts`; do not edit it.
 - `src/features/auth/`: Better Auth client, sign-in form, and session gate.
-- `src/features/conversations/`: conversation layout, the assistant-ui runtime connected to `/chat`, and the thread list and history adapters backed by `/conversations`.
+- `src/features/conversations/`: conversation layout, the assistant-ui runtime connected to `/chat`, and the thread list and history adapters backed by `/conversations`. Chat requests send only the new message and its parent (`chat-request.ts`); the server owns the history.
 - `src/components/assistant-ui/`: thread and conversation-list components built from assistant-ui primitives.
 - `src/components/ui/`: shadcn components on Base UI.
 

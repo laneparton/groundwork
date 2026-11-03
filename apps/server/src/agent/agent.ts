@@ -32,6 +32,8 @@ const makeAgent = Effect.gen(function* () {
   })
 
   return {
+    /** Tool definitions, also used to validate tool parts in stored conversations. */
+    tools,
     stream: (messages: ModelMessage[], abortSignal: AbortSignal) =>
       Effect.map(
         Effect.fromOption(model, () => unavailable),

@@ -2,36 +2,23 @@ import { Schema } from 'effect'
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api'
 import { AgentUnavailable } from '../agent/agent.ts'
 import { Unauthorized } from '../auth/session.ts'
-import { InvalidChatRequest } from '../chat/stream-response.ts'
-import { ConversationNotFound } from '../conversations/store.ts'
+import { InvalidChatRequest, SentMessage } from '../chat/stream-response.ts'
+import {
+  ConversationChanges,
+  ConversationConflict,
+  ConversationNotFound,
+  ConversationSummary,
+  ConversationTree,
+} from '../conversations/schema.ts'
 
 export const HealthResponse = Schema.Struct({ status: Schema.Literal('ok') })
 
-const NonEmptyString = Schema.String.check(Schema.isMinLength(1))
-
-// AI SDK validates the individual UI messages in the chat module.
+// The server owns the history: a chat request carries only the new user message and
+// the id of the stored message it follows.
 export const ChatRequest = Schema.Struct({
-  id: NonEmptyString,
-  messages: Schema.Array(Schema.Unknown).check(Schema.isMinLength(1)),
-})
-
-const ConversationStatus = Schema.Literals(['regular', 'archived'])
-
-export const ConversationSummary = Schema.Struct({
-  id: Schema.String,
-  title: Schema.NullOr(Schema.String),
-  status: ConversationStatus,
-  updatedAt: Schema.String,
-})
-
-export const Conversation = Schema.Struct({
-  ...ConversationSummary.fields,
-  messages: Schema.Array(Schema.Unknown),
-})
-
-export const ConversationUpdate = Schema.Struct({
-  title: Schema.optional(NonEmptyString),
-  status: Schema.optional(ConversationStatus),
+  id: Schema.String.check(Schema.isMinLength(1)),
+  message: SentMessage,
+  parentId: Schema.NullOr(Schema.String),
 })
 
 const conversationParams = { id: Schema.String }
@@ -53,6 +40,7 @@ export const Api = HttpApi.make('groundwork').add(
         InvalidChatRequest.pipe(HttpApiSchema.status(400)),
         Unauthorized.pipe(HttpApiSchema.status(401)),
         ConversationNotFound.pipe(HttpApiSchema.status(404)),
+        ConversationConflict.pipe(HttpApiSchema.status(409)),
         AgentUnavailable.pipe(HttpApiSchema.status(503)),
       ],
     }),
@@ -68,12 +56,17 @@ export const Api = HttpApi.make('groundwork').add(
     }),
     HttpApiEndpoint.get('get', '/conversations/:id', {
       params: conversationParams,
-      success: Conversation,
+      success: ConversationSummary,
+      error: conversationErrors,
+    }),
+    HttpApiEndpoint.get('messages', '/conversations/:id/messages', {
+      params: conversationParams,
+      success: ConversationTree,
       error: conversationErrors,
     }),
     HttpApiEndpoint.patch('update', '/conversations/:id', {
       params: conversationParams,
-      payload: ConversationUpdate,
+      payload: ConversationChanges,
       error: conversationErrors,
     }),
     HttpApiEndpoint.delete('remove', '/conversations/:id', {
