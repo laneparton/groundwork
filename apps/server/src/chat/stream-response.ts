@@ -49,6 +49,16 @@ export function streamChatResponse<E>(
   return Effect.gen(function* () {
     const agent = yield* Agent
 
+    // Stored history was valid when saved; recheck it against today's tools so a changed
+    // tool fails here with a clear error instead of inside the model request.
+    yield* Effect.tryPromise({
+      try: () => validateUIMessages({ messages, tools: agent.tools }),
+      catch: () =>
+        new InvalidChatRequest({
+          message: 'The stored conversation no longer matches the agent tools.',
+        }),
+    })
+
     const modelMessages = yield* Effect.tryPromise({
       try: () => convertToModelMessages(messages),
       catch: () =>

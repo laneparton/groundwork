@@ -12,6 +12,14 @@ export const ConversationSummary = Schema.Struct({
 
 export type ConversationSummary = typeof ConversationSummary.Type
 
+// The HTTP shape of a stored message tree. AI SDK UI messages stay opaque here.
+export const ConversationTree = Schema.Struct({
+  headId: Schema.NullOr(Schema.String),
+  messages: Schema.Array(
+    Schema.Struct({ message: Schema.Unknown, parentId: Schema.NullOr(Schema.String) }),
+  ),
+})
+
 export const ConversationChanges = Schema.Struct({
   title: Schema.optional(Schema.String.check(Schema.isMinLength(1))),
   status: Schema.optional(ConversationStatus),

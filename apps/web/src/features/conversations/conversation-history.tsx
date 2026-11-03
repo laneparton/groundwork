@@ -29,16 +29,12 @@ function useServerHistory() {
 
           if (!remoteId) return { messages: [] }
 
-          const messages = await getConversationMessages(remoteId)
+          const { headId, messages } = await getConversationMessages(remoteId)
 
           return {
-            messages: messages.map(({ id, ...content }, index) =>
-              formatAdapter.decode({
-                id,
-                parent_id: messages[index - 1]?.id ?? null,
-                format: aiSdkFormat,
-                content,
-              }),
+            headId,
+            messages: messages.map(({ message: { id, ...content }, parentId }) =>
+              formatAdapter.decode({ id, parent_id: parentId, format: aiSdkFormat, content }),
             ),
           }
         },

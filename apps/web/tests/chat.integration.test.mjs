@@ -332,7 +332,16 @@ test(
       assert.equal(summary.status, 200)
       assert.equal(messages.status, 200)
 
-      return { ...(await summary.json()), ...(await messages.json()) }
+      // `messages` is the branch a reload shows, rebuilt from the head; `nodes` is the tree.
+      const { headId, messages: nodes } = await messages.json()
+      const byId = new Map(nodes.map((node) => [node.message.id, node]))
+      const branch = []
+
+      for (let id = headId; id !== null; id = byId.get(id).parentId) {
+        branch.unshift(byId.get(id).message)
+      }
+
+      return { ...(await summary.json()), headId, nodes, messages: branch }
     }
 
     const sendChat = (id, message, parentId) =>
@@ -531,8 +540,9 @@ test(
     await regenerated.text()
 
     const afterRegenerate = await storedConversation(holdChatId)
-    assert.equal(afterRegenerate.messages.length, 4, 'Regenerating replaces the last response')
+    assert.equal(afterRegenerate.messages.length, 4, 'The regenerated response ends the branch')
     assert.notEqual(afterRegenerate.messages[3].id, storedHold.messages[3].id)
+    assert.equal(afterRegenerate.nodes.length, 5, 'The earlier response is kept as a sibling')
 
     const edited = await sendChat(holdChatId, userMessage('user-2-edit', 'Edited'), null)
     assert.equal(edited.status, 200)
@@ -542,9 +552,10 @@ test(
     assert.deepEqual(
       afterEdit.messages.map((message) => message.role),
       ['user', 'assistant'],
-      'Editing the first message drops everything after it',
+      'Editing the first message starts a new branch',
     )
     assert.equal(afterEdit.messages[0].id, 'user-2-edit')
+    assert.equal(afterEdit.nodes.length, 7, 'The edited branch stays stored')
 
     const sqlController = new AbortController()
 

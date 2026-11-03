@@ -35,7 +35,7 @@ export const ConversationHandlers = HttpApiBuilder.group(Api, 'conversations', (
         const session = yield* requireSession(new Headers(request.headers))
         const store = yield* ConversationStore
 
-        return { messages: yield* store.messages(session.user.id, params.id) }
+        return yield* store.messages(session.user.id, params.id)
       }),
     )
     .handle('update', ({ params, payload, request }) =>

@@ -33,6 +33,21 @@ async function openTurn(store, conversationId, message, parentId) {
   return { turn, close: () => run(Scope.close(scope, Exit.void)) }
 }
 
+// The branch a reload shows: from the head back to the first message.
+async function headBranch(store, conversationId) {
+  const { headId, messages } = await run(store.messages('alice', conversationId))
+  const byId = new Map(messages.map((node) => [node.message.id, node]))
+  const ids = []
+
+  for (let id = headId; id !== null; id = byId.get(id).parentId) ids.unshift(id)
+
+  return ids
+}
+
+async function nodeCount(store, conversationId) {
+  return (await run(store.messages('alice', conversationId))).messages.length
+}
+
 async function completeTurn(store, conversationId, message, parentId, reply) {
   const { turn, close } = await openTurn(store, conversationId, message, parentId)
   await run(turn.finish([...turn.messages, reply]))
@@ -46,8 +61,41 @@ test('Migrations run once per database', () => {
   const applied = db.prepare('SELECT name FROM migration').all()
   assert.deepEqual(
     applied.map((row) => row.name),
-    ['conversations-001-create'],
+    ['conversations-001-create', 'conversations-002-message-tree'],
   )
+})
+
+test('Linear conversations from before the tree become one branch', async () => {
+  const db = new DatabaseSync(':memory:')
+  db.exec('PRAGMA foreign_keys = ON; CREATE TABLE "user" (id TEXT PRIMARY KEY);')
+  db.exec(`INSERT INTO "user" (id) VALUES ('alice')`)
+
+  // The schema and data as conversations-001 left them.
+  db.exec(`
+    CREATE TABLE migration (name TEXT PRIMARY KEY, appliedAt TEXT NOT NULL);
+    INSERT INTO migration VALUES ('conversations-001-create', '2026-11-01T00:00:00.000Z');
+    CREATE TABLE conversation (
+      id TEXT PRIMARY KEY, userId TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+      title TEXT, status TEXT NOT NULL DEFAULT 'regular', createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL
+    );
+    CREATE TABLE conversation_message (
+      conversationId TEXT NOT NULL REFERENCES conversation(id) ON DELETE CASCADE,
+      position INTEGER NOT NULL, message TEXT NOT NULL, PRIMARY KEY (conversationId, position)
+    );
+    INSERT INTO conversation VALUES ('c1', 'alice', 'Hi', 'regular', '2026-11-01', '2026-11-01');
+  `)
+
+  const insert = db.prepare('INSERT INTO conversation_message VALUES (?, ?, ?)')
+
+  for (const [position, message] of [user('u1', 'Hi'), assistant('a1', 'Hello')].entries()) {
+    insert.run('c1', position, JSON.stringify(message))
+  }
+
+  const store = Effect.runSync(makeConversationStore(db, abandonedTurnGrace))
+
+  assert.deepEqual(await headBranch(store, 'c1'), ['u1', 'a1'])
+  await completeTurn(store, 'c1', user('u2', 'More'), 'a1', assistant('a2', 'Sure'))
+  assert.deepEqual(await headBranch(store, 'c1'), ['u1', 'a1', 'u2', 'a2'])
 })
 
 test('Users only reach their own conversations', async () => {
@@ -66,23 +114,37 @@ test('Users only reach their own conversations', async () => {
   assert.equal((await run(store.get('alice', id))).id, id)
 })
 
-test('A turn replaces everything stored after its parent', async () => {
+test('Edits and regenerations add branches and keep earlier ones', async () => {
   const { store } = setup()
   const id = await run(store.create('alice'))
 
   await completeTurn(store, id, user('u1', 'First question'), null, assistant('a1', 'One'))
   await completeTurn(store, id, user('u2', 'Second'), 'a1', assistant('a2', 'Two'))
+  assert.deepEqual(await headBranch(store, id), ['u1', 'a1', 'u2', 'a2'])
 
-  const ids = async () => (await run(store.messages('alice', id))).map((message) => message.id)
-  assert.deepEqual(await ids(), ['u1', 'a1', 'u2', 'a2'])
+  // Regenerate: the stored user message is reused and gets a sibling response.
+  const regenerated = await openTurn(store, id, user('u2', 'Second'), 'a1')
+  assert.deepEqual(
+    regenerated.turn.messages.map((message) => message.id),
+    ['u1', 'a1', 'u2'],
+    'The model sees only the branch being answered',
+  )
+  await run(regenerated.turn.finish([...regenerated.turn.messages, assistant('a2b', 'Again')]))
+  await regenerated.close()
 
-  // Regenerate: the same user message after the same parent gets a new response.
-  await completeTurn(store, id, user('u2', 'Second'), 'a1', assistant('a2b', 'Two again'))
-  assert.deepEqual(await ids(), ['u1', 'a1', 'u2', 'a2b'])
+  assert.deepEqual(await headBranch(store, id), ['u1', 'a1', 'u2', 'a2b'])
+  assert.equal(await nodeCount(store, id), 5, 'The first response is kept as a sibling')
 
-  // Edit the first message: everything after it is dropped.
+  // Edit the first message: a new root branch; the old branch stays stored.
   await completeTurn(store, id, user('u1b', 'Edited'), null, assistant('a1b', 'New'))
-  assert.deepEqual(await ids(), ['u1b', 'a1b'])
+  assert.deepEqual(await headBranch(store, id), ['u1b', 'a1b'])
+  assert.equal(await nodeCount(store, id), 7)
+
+  const { messages } = await run(store.messages('alice', id))
+  const parents = new Map(messages.map((node) => [node.message.id, node.parentId]))
+  assert.equal(parents.get('a2'), 'u2')
+  assert.equal(parents.get('a2b'), 'u2')
+  assert.equal(parents.get('u1b'), null)
 
   assert.equal((await run(store.get('alice', id))).title, 'First question')
 })
@@ -96,7 +158,11 @@ test('A parent that is not stored is a conflict', async () => {
 
   // The failed turn does not hold up the next one.
   await completeTurn(store, id, user('u1', 'Hi'), null, assistant('a1', 'Hello'))
-  assert.equal((await run(store.messages('alice', id))).length, 2)
+  assert.equal(await nodeCount(store, id), 2)
+
+  // A stored message id cannot move to another parent.
+  const moved = Effect.scoped(store.beginTurn('alice', id, user('u1', 'Hi'), 'a1'))
+  assert.equal(await failure(moved), 'ConversationConflict')
 })
 
 test('Titles come from the first user message and survive a rename', async () => {
@@ -146,7 +212,7 @@ test('A turn waits for the previous response to be saved', async () => {
   await close()
 })
 
-test('An abandoned turn stops blocking after the grace period and cannot overwrite later turns', async () => {
+test('An abandoned turn stops blocking after the grace period and keeps a late response off the head', async () => {
   const { store } = setup()
   const id = await run(store.create('alice'))
   const abandoned = await openTurn(store, id, user('u1', 'Hi'), null)
@@ -154,12 +220,23 @@ test('An abandoned turn stops blocking after the grace period and cannot overwri
 
   await completeTurn(store, id, user('u1b', 'Again'), null, assistant('a1b', 'Hello'))
 
-  // The abandoned response finishes late; saving it would erase the newer turn.
+  // The abandoned response finishes after the newer turn.
   await run(abandoned.turn.finish([...abandoned.turn.messages, assistant('a1', 'Late')]))
 
-  const stored = await run(store.messages('alice', id))
-  assert.deepEqual(
-    stored.map((message) => message.id),
-    ['u1b', 'a1b'],
-  )
+  assert.deepEqual(await headBranch(store, id), ['u1b', 'a1b'], 'The newer turn keeps the head')
+
+  const { messages } = await run(store.messages('alice', id))
+  const late = messages.find((node) => node.message.id === 'a1')
+  assert.equal(late?.parentId, 'u1', 'The late response is kept on its own branch')
+})
+
+test('An empty response is not stored', async () => {
+  const { store } = setup()
+  const id = await run(store.create('alice'))
+  const { turn, close } = await openTurn(store, id, user('u1', 'Hi'), null)
+
+  await run(turn.finish([...turn.messages, { id: 'a1', role: 'assistant', parts: [] }]))
+  await close()
+
+  assert.deepEqual(await headBranch(store, id), ['u1'])
 })

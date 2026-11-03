@@ -8,6 +8,7 @@ import {
   ConversationConflict,
   ConversationNotFound,
   ConversationSummary,
+  ConversationTree,
 } from '../conversations/schema.ts'
 
 export const HealthResponse = Schema.Struct({ status: Schema.Literal('ok') })
@@ -60,7 +61,7 @@ export const Api = HttpApi.make('groundwork').add(
     }),
     HttpApiEndpoint.get('messages', '/conversations/:id/messages', {
       params: conversationParams,
-      success: Schema.Struct({ messages: Schema.Array(Schema.Unknown) }),
+      success: ConversationTree,
       error: conversationErrors,
     }),
     HttpApiEndpoint.patch('update', '/conversations/:id', {
