@@ -266,6 +266,29 @@ describe('ConversationStore', () => {
     }),
   )
 
+  it.effect.each([
+    {
+      case: 'keeps a title of exactly the limit whole',
+      text: 'x'.repeat(60),
+      title: 'x'.repeat(60),
+    },
+    {
+      case: 'trims the space before the ellipsis when cutting',
+      text: `${'x'.repeat(58)} ${'y'.repeat(10)}`,
+      title: `${'x'.repeat(58)}…`,
+    },
+    { case: 'leaves a blank first message untitled', text: '   ', title: null },
+  ])('$case', ({ text, title }) =>
+    Effect.gen(function* () {
+      const { store } = yield* setup
+      const id = yield* store.create('alice')
+
+      yield* completeTurn(store, id, user('u1', text), null, assistant('a1', 'Hi'))
+
+      expect((yield* store.get('alice', id)).title).toBe(title)
+    }),
+  )
+
   it.effect('makes a turn wait for the previous response to be saved', () =>
     Effect.gen(function* () {
       const { store } = yield* setup

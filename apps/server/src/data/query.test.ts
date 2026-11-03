@@ -77,8 +77,48 @@ describe('runQuery', () => {
     const [dryRun, job] = fake.jobs
 
     expect(dryRun).toMatchObject({ dryRun: true, useLegacySql: false, location: 'US' })
-    expect(job).toMatchObject({ maximumBytesBilled: '1000', jobTimeoutMs: 30_000 })
+
+    expect(job).toMatchObject({
+      useLegacySql: false,
+      maximumBytesBilled: '1000',
+      jobTimeoutMs: 30_000,
+    })
+
     expect(job?.dryRun).toBeUndefined()
+  })
+
+  it('reads one page with room for one extra row', async () => {
+    const requests: Array<Parameters<QueryJob['getQueryResults']>[0]> = []
+
+    const fake = fakeClient(select(), async (resultOptions) => {
+      requests.push(resultOptions)
+
+      return [[]]
+    })
+
+    await runQuery(fake.client, 'SELECT 1', options)
+
+    // Auto-pagination would download every page of a large result.
+    expect(requests).toEqual([
+      expect.objectContaining({ autoPaginate: false, maxResults: rowLimit + 1 }),
+    ])
+  })
+
+  it('does not report truncation at exactly the row limit', async () => {
+    const rows = Array.from({ length: rowLimit }, (_, value) => ({ value }))
+    const fake = fakeClient(select(), async () => [rows])
+
+    expect(await runQuery(fake.client, 'SELECT 1', options)).toEqual({ rows, truncated: false })
+  })
+
+  it('stops listening for aborts once the query finishes', async () => {
+    const controller = new AbortController()
+    const fake = fakeClient(select())
+
+    await runQuery(fake.client, 'SELECT 1', { ...options, signal: controller.signal })
+    controller.abort()
+
+    expect(fake.cancelled()).toBe(0)
   })
 
   it('skips the dataset check when the query is not restricted', async () => {
@@ -114,13 +154,13 @@ describe('runQuery', () => {
     await expect(runQuery(client, 'SELECT 1', options)).rejects.toThrow('Only a single read-only')
   })
 
-  it('wraps the query in a row limit and drops a trailing semicolon', async () => {
+  it('wraps the query in a row limit and drops only a trailing semicolon', async () => {
     const fake = fakeClient(select())
 
-    await runQuery(fake.client, '  SELECT 1;  ', { maxBytesBilled: 1 })
+    await runQuery(fake.client, "  SELECT ';' AS s;  ", { maxBytesBilled: 1 })
 
     expect(fake.jobs[1]?.query).toBe(
-      `SELECT * FROM (SELECT 1) AS query_result LIMIT ${rowLimit + 1}`,
+      `SELECT * FROM (SELECT ';' AS s) AS query_result LIMIT ${rowLimit + 1}`,
     )
   })
 
@@ -208,7 +248,13 @@ describe('runQuery', () => {
 
   it('cancels the job when the abort lands between starting and reading results', async () => {
     const controller = new AbortController()
-    const fake = fakeClient(select(), async () => [[]])
+    let reads = 0
+
+    const fake = fakeClient(select(), async () => {
+      reads++
+
+      return [[]]
+    })
 
     const client: QueryClient = {
       createQueryJob: async (query) => {
@@ -224,6 +270,7 @@ describe('runQuery', () => {
       runQuery(client, 'SELECT 1', { ...options, signal: controller.signal }),
     ).rejects.toThrow()
     expect(fake.cancelled()).toBe(1)
+    expect(reads).toBe(0)
   })
 
   it('ignores a failed cancel', async () => {

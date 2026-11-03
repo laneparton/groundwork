@@ -96,7 +96,7 @@ export async function runQuery(client: QueryClient, sql: string, options: QueryO
     })
   }
 
-  signal?.addEventListener('abort', cancel, { once: true })
+  signal?.addEventListener('abort', cancel)
 
   try {
     if (signal?.aborted) {

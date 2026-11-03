@@ -10,6 +10,8 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: isCI,
   retries: isCI ? 1 : 0,
+  // A test that only passes on retry fails the run: flakiness here has meant a real race.
+  failOnFlakyTests: isCI,
   reporter: isCI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: { baseURL: web, trace: 'retain-on-failure' },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],

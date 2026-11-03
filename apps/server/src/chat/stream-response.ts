@@ -25,18 +25,10 @@ export const SentMessage = Schema.Struct({
 })
 
 export function validateUserMessage(sent: typeof SentMessage.Type) {
-  return Effect.gen(function* () {
-    const [message] = yield* Effect.tryPromise({
-      try: () => validateUIMessages({ messages: [sent] }),
-      catch: () => new InvalidChatRequest({ message: 'Invalid chat message.' }),
-    })
-
-    if (!message) {
-      return yield* new InvalidChatRequest({ message: 'Invalid chat message.' })
-    }
-
-    return message
-  })
+  return Effect.tryPromise(() => validateUIMessages({ messages: [sent] })).pipe(
+    Effect.flatMap(([message]) => Effect.fromNullishOr(message)),
+    Effect.mapError(() => new InvalidChatRequest({ message: 'Invalid chat message.' })),
+  )
 }
 
 // Streams the response to `messages` and hands the full conversation to

@@ -15,7 +15,7 @@ export default defineConfig({
         'src/features/conversations/conversation-adapter.ts',
       ],
       reporter: ['text-summary', 'text', 'html', 'json-summary'],
-      thresholds: { lines: 80, branches: 80, functions: 80, statements: 80 },
+      thresholds: { lines: 80, branches: 80, functions: 80, statements: 80, perFile: true },
     },
   },
 })

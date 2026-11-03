@@ -10,8 +10,8 @@
 
 ## Testing
 
-- Unit tests use Vitest beside the code (`src/**/*.test.ts`). Run `npm test` or `npm run test:coverage` in `apps/server` and `apps/web`. Coverage must stay at or above 80% for lines, branches, functions, and statements.
+- Unit tests use Vitest beside the code (`src/**/*.test.ts`). Run `npm test` or `npm run test:coverage` in `apps/server` and `apps/web`. Coverage must stay at or above 80% for lines, branches, functions, and statements in every file, not just on average.
 - Server tests use `@effect/vitest` (`it.effect`, `TestClock`) and provide fakes as layers. Module mocking is banned by lint: give a dependency a seam instead, such as a `make*` constructor that takes the client or model (`makeWarehouse`, `makeAgent`, `makeConversationStore`), and keep the live layer as thin wiring.
 - Web unit tests cover plain TypeScript modules only, with `fetch` stubbed. React behavior is tested end to end: `npm run test:e2e --prefix apps/web` runs Playwright against the real server, Vite, and a fake model provider (`e2e/fake-openai.ts`) on separate ports.
-- `npm run test:mutation` runs Stryker. CI fails below the `break` score in each app's `stryker.config.json`; raise it as tests improve, never lower it to pass.
+- `npm run test:mutation` runs Stryker. CI fails below the `break` score in each app's `stryker.config.json`; raise it as tests improve, never lower it to pass. Kill a surviving mutant with a test; use `// Stryker disable next-line all` only for code no test can observe, with a comment saying why.
 - Pre-commit formats, lints, typechecks, and runs the unit tests related to staged files. Pre-push runs both coverage gates and the e2e suite. CI runs all of that plus mutation and integration tests.
