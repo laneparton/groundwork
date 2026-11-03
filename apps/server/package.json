@@ -7,11 +7,15 @@
     "prepare": "effect-language-service patch",
     "db:migrate": "node --env-file-if-exists=.env src/auth/migrate.ts",
     "dev": "node --watch --env-file-if-exists=.env src/main.ts",
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "start": "node --env-file-if-exists=.env dist/main.js",
-    "test": "node --test \"src/**/*.test.mjs\"",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint"
+    "lint": "oxlint",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:mutation": "stryker run",
+    "test:related": "vitest related --run --passWithNoTests"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.83",
@@ -24,9 +28,14 @@
   },
   "devDependencies": {
     "@effect/language-service": "^0.87.5",
+    "@effect/vitest": "^4.1.2",
+    "@stryker-mutator/core": "^10.1.1",
+    "@stryker-mutator/vitest-runner": "^10.1.1",
     "@types/node": "^24.19.1",
+    "@vitest/coverage-v8": "^5.1.0",
     "oxlint": "1.86.0",
-    "typescript": "~6.0.2"
+    "typescript": "~6.0.2",
+    "vitest": "^5.1.0"
   },
   "engines": {
     "node": ">=24"

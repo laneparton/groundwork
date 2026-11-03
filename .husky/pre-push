@@ -1,0 +1,4 @@
+# Coverage gates (80%) for both apps, then the browser suite. Mutation testing runs in CI.
+npm run test:coverage --prefix apps/server
+npm run test:coverage --prefix apps/web
+npm run test:e2e --prefix apps/web

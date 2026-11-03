@@ -21,9 +21,14 @@ In development, Vite proxies `/api/auth`, `/chat`, `/conversations`, and `/healt
 ```sh
 npm run typecheck
 npm run lint
-npm test         # integration test against the real server
+npm test                 # unit tests for the plain TypeScript modules
+npm run test:coverage    # the same, failing below 80% coverage
+npm run test:integration # integration test against the real server
+npm run test:e2e         # Playwright against the real server, Vite, and a fake model
 npm run build
 npm run preview  # serves the production build
 ```
 
-`npm test` starts the server with a temporary SQLite database and local OpenAI and BigQuery fixtures. It covers sign-up, sign-in, and sign-out, streamed chat, conversation storage and per-user isolation, the SQL tool round trip, invalid messages, and cancellation of both the model request and the query job. It needs the server dependencies installed and never calls paid APIs.
+`npm run test:integration` starts the server with a temporary SQLite database and local OpenAI and BigQuery fixtures. It covers sign-up, sign-in, and sign-out, streamed chat, conversation storage and per-user isolation, the SQL tool round trip, invalid messages, and cancellation of both the model request and the query job. It needs the server dependencies installed and never calls paid APIs.
+
+`npm run test:e2e` boots the server, Vite, and `e2e/fake-openai.ts` on their own ports (5174, 3101, 4011) with a fresh database, then drives the app in Chromium: sign-up, chat, reload, regenerate, edit, branch switching, Stop, and sign-out. Run `npx playwright install chromium` once first.

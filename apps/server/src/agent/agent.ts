@@ -1,5 +1,5 @@
 import { createOpenAI } from '@ai-sdk/openai'
-import { stepCountIs, streamText, type ModelMessage } from 'ai'
+import { stepCountIs, streamText, type LanguageModel, type ModelMessage } from 'ai'
 import { Context, Effect, Layer, Option, Redacted, Schema } from 'effect'
 import { ChatConfig } from '../config.ts'
 import { Warehouse } from '../data/warehouse.ts'
@@ -12,18 +12,8 @@ export class AgentUnavailable extends Schema.TaggedError<AgentUnavailable>()('Ag
   message: Schema.String,
 }) {}
 
-const makeAgent = Effect.gen(function* () {
-  const warehouse = yield* Warehouse
-  const chat = yield* Effect.option(ChatConfig)
-
-  if (Option.isNone(chat)) {
-    yield* Effect.logWarning('Chat is disabled until OPENAI_API_KEY and CHAT_MODEL are set.')
-  }
-
-  const model = Option.map(chat, (config) =>
-    createOpenAI({ apiKey: Redacted.value(config.apiKey) })(config.model),
-  )
-
+// Takes the model so tests can supply a mock; the live layer builds the OpenAI model.
+export function makeAgent(warehouse: Warehouse['Service'], model: Option.Option<LanguageModel>) {
   const system = buildInstructions(warehouse.dataset, warehouse.isPublicDataset)
   const tools = createTools(warehouse)
 
@@ -48,10 +38,25 @@ const makeAgent = Effect.gen(function* () {
           }),
       ),
   }
-})
+}
 
-export class Agent extends Context.Service<Agent, Effect.Success<typeof makeAgent>>()(
+export class Agent extends Context.Service<Agent, ReturnType<typeof makeAgent>>()(
   'groundwork/Agent',
 ) {}
 
-export const AgentLive = Layer.effect(Agent)(makeAgent)
+export const AgentLive = Layer.effect(Agent)(
+  Effect.gen(function* () {
+    const warehouse = yield* Warehouse
+    const chat = yield* Effect.option(ChatConfig)
+
+    if (Option.isNone(chat)) {
+      yield* Effect.logWarning('Chat is disabled until OPENAI_API_KEY and CHAT_MODEL are set.')
+    }
+
+    const model = Option.map(chat, (config) =>
+      createOpenAI({ apiKey: Redacted.value(config.apiKey) })(config.model),
+    )
+
+    return makeAgent(warehouse, model)
+  }),
+)

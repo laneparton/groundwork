@@ -124,7 +124,10 @@ const ComposerPrimaryAction: FC = () => {
   return (
     <div className="flex items-center gap-1">
       <AuiIf condition={(s) => s.thread.isRunning}>
-        <ComposerPrimitive.Cancel className="flex size-9 items-center justify-center rounded-full bg-[#0d0d0d] text-white dark:bg-white dark:text-black">
+        <ComposerPrimitive.Cancel
+          aria-label="Stop generating"
+          className="flex size-9 items-center justify-center rounded-full bg-[#0d0d0d] text-white dark:bg-white dark:text-black"
+        >
           <div className="size-2.5 rounded-[2px] bg-current" />
         </ComposerPrimitive.Cancel>
       </AuiIf>

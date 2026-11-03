@@ -28,3 +28,12 @@ dist-ssr
 .env.*
 !.env.example
 .tanstack/
+
+# Test reports
+coverage/
+reports/
+.stryker-tmp/
+
+# Playwright
+test-results/
+playwright-report/
