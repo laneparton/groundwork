@@ -3,7 +3,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import type { UIMessage } from 'ai'
 import { Context, Duration, Effect, Layer, Schema, Scope } from 'effect'
 import { runMigrations, type Migration } from '../db/migrations.ts'
-import { Database } from '../db/service.ts'
+import { Database, write } from '../db/service.ts'
 import {
   ConversationChanges,
   ConversationConflict,
@@ -205,11 +205,8 @@ export function makeConversationStore(
   abandonedTurnGrace: Duration.Input = defaultAbandonedTurnGrace,
 ) {
   return Effect.gen(function* () {
-    const statements = yield* Effect.sync(() => {
-      runMigrations(db, migrations)
-
-      return prepareStatements(db)
-    })
+    yield* write(db, () => runMigrations(db, migrations))
+    const statements = prepareStatements(db)
 
     const turns = createTurnQueue()
     const decodeSummary = Schema.decodeUnknownSync(ConversationSummary)
@@ -282,7 +279,7 @@ export function makeConversationStore(
 
     return ConversationStore.of({
       create: (userId) =>
-        Effect.sync(() => {
+        write(db, () => {
           const id = randomUUID()
           const now = new Date().toISOString()
           statements.insert.run(id, userId, now, now)
@@ -337,7 +334,7 @@ export function makeConversationStore(
             // Save the user's turn before the model runs so it survives a failed response.
             // A regenerated message is already stored; only the head moves.
             const added = storedParent === undefined ? [message] : []
-            yield* Effect.sync(() => appendBranch(id, parentId, added, message.id))
+            yield* write(db, () => appendBranch(id, parentId, added, message.id))
 
             return yield* Effect.sync(() => branchTo(id, message.id))
           }).pipe(Effect.onError(() => slot.release))
@@ -358,7 +355,7 @@ export function makeConversationStore(
 
                 const headId = isCurrent ? (response.at(-1)?.id ?? null) : null
 
-                yield* Effect.sync(() => appendBranch(id, message.id, response, headId))
+                yield* write(db, () => appendBranch(id, message.id, response, headId))
               }).pipe(Effect.ensuring(slot.release)),
             release: slot.release,
           }
@@ -366,7 +363,8 @@ export function makeConversationStore(
 
       update: (userId, id, changes) =>
         Effect.flatMap(
-          Effect.sync(
+          write(
+            db,
             () =>
               statements.update.run(changes.title ?? null, changes.status ?? null, id, userId)
                 .changes,
@@ -376,7 +374,7 @@ export function makeConversationStore(
 
       remove: (userId, id) =>
         Effect.flatMap(
-          Effect.sync(() => statements.remove.run(id, userId).changes),
+          write(db, () => statements.remove.run(id, userId).changes),
           requireChange,
         ),
     })
