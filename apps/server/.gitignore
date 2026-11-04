@@ -8,3 +8,6 @@ dist/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+coverage/
+reports/
+.stryker-tmp/

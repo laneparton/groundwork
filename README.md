@@ -41,8 +41,11 @@ The plugin and Oxlint versions are pinned together. [UPSTREAM.md](tools/oxlint/a
 ```sh
 npm run build --prefix apps/server
 npm run build --prefix apps/web
-npm test --prefix apps/server
-npm test --prefix apps/web
+npm run test:coverage --prefix apps/server
+npm run test:coverage --prefix apps/web
+npm run test:integration --prefix apps/web
+npm run test:e2e --prefix apps/web
+npm run test:mutation --prefix apps/server
 ```
 
-The web test is the cross-app integration test. It uses local fixtures and never calls paid APIs.
+Unit tests must keep 80% coverage, and Stryker fails below each app's mutation `break` score. The integration and e2e suites use local fixtures and never call paid APIs. Run `npx playwright install chromium` in `apps/web` once before the e2e suite. See `AGENTS.md` for how tests are structured and which hooks run them.

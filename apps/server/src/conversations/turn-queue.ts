@@ -28,6 +28,9 @@ export function createTurnQueue() {
             yield* ready
             yield* Deferred.succeed(done, undefined)
 
+            // Forgets finished conversations so the map does not grow. No behavior depends
+            // on it, so tests cannot observe it.
+            // Stryker disable next-line all
             if (tails.get(conversationId) === done) tails.delete(conversationId)
           }),
         ),

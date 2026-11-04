@@ -48,9 +48,11 @@ The agent's one tool runs a single GoogleSQL `SELECT` against `BIGQUERY_DATASET`
 ```sh
 npm run typecheck
 npm run lint
-npm test         # unit tests; the cross-app integration test runs from ../web
-npm run build    # emits dist/
-npm start        # runs dist/
+npm test               # unit tests; the cross-app integration test runs from ../web
+npm run test:coverage  # the same, failing below 80% coverage
+npm run test:mutation  # Stryker mutation tests
+npm run build          # emits dist/
+npm start              # runs dist/
 ```
 
 `scripts/*-data-pilot.ts` plan, create, and validate a bounded BigQuery copy of deps.dev for `BIGQUERY_DATASET`.

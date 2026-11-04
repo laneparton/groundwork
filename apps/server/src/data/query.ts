@@ -1,4 +1,9 @@
-import { BigQuery } from '@google-cloud/bigquery'
+import {
+  BigQuery,
+  type JobMetadata,
+  type Query,
+  type QueryResultsOptions,
+} from '@google-cloud/bigquery'
 import { z } from 'zod'
 
 export const publicDataset = 'bigquery-public-data.deps_dev_v1'
@@ -22,11 +27,24 @@ export interface QueryResult {
   readonly truncated: boolean
 }
 
-export function createBigQueryClient(projectId: string) {
+// The slice of the BigQuery client that runQuery uses, so tests can supply a fake.
+export interface QueryJob {
+  readonly metadata: JobMetadata
+  readonly cancel: () => Promise<object>
+  readonly getQueryResults: (
+    options: QueryResultsOptions,
+  ) => Promise<[ReadonlyArray<object>] | [ReadonlyArray<object>, Query | null, object]>
+}
+
+export interface QueryClient {
+  readonly createQueryJob: (options: Query) => Promise<[QueryJob, ...object[]]>
+}
+
+export function createBigQueryClient(projectId: string): QueryClient {
   return new BigQuery({ projectId })
 }
 
-export async function runQuery(client: BigQuery, sql: string, options: QueryOptions) {
+export async function runQuery(client: QueryClient, sql: string, options: QueryOptions) {
   const { signal } = options
   signal?.throwIfAborted()
 
@@ -78,7 +96,7 @@ export async function runQuery(client: BigQuery, sql: string, options: QueryOpti
     })
   }
 
-  signal?.addEventListener('abort', cancel, { once: true })
+  signal?.addEventListener('abort', cancel)
 
   try {
     if (signal?.aborted) {
